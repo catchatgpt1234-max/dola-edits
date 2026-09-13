@@ -1,12 +1,12 @@
-"""
-Speech Transcriber Module for Dola Edits
-Uses local high-speed faster-whisper with word-level timestamps to analyze video audio
-and chunk spoken words dynamically into 3-4 word segments (Reels / Shorts / TikTok style).
-Dola Edits AI Studio
-"""
-
 import os
+import re
+import sys
+import uuid
+import shutil
 import logging
+import tempfile
+import subprocess
+from utils.watermark_engine import FFMPEG_EXE
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +115,7 @@ def transcribe_video_speech(video_path, model_size="base"):
     """
     Analyzes the audio track of the given video file and transcribes spoken words
     into dynamic 3-4 word cues strictly synchronized with the speaker's voice.
-    
-    Uses Silero Voice Activity Detection (VAD) to prevent false early triggers on
-    background noise/music, ensuring subtitles appear precisely when the speaker talks.
+    Extracts clean 16kHz mono WAV and retries with/without VAD for 100% speech capture.
     """
     if not os.path.exists(video_path):
         return {
@@ -127,22 +125,6 @@ def transcribe_video_speech(video_path, model_size="base"):
             "formatted_text": "",
             "message": "Video file not found."
         }
-
-    # Verify audio stream exists to avoid container demux errors
-    try:
-        import av
-        with av.open(video_path) as container:
-            audio_streams = [s for s in container.streams if s.type == 'audio']
-            if not audio_streams:
-                return {
-                    "has_speech": False,
-                    "language": None,
-                    "cues": [],
-                    "formatted_text": "",
-                    "message": "Video has no audio track."
-                }
-    except Exception as ae:
-        logger.debug(f"Audio stream check via PyAV: {ae}")
 
     model = get_whisper_model(model_size)
     if model is None:
@@ -154,76 +136,93 @@ def transcribe_video_speech(video_path, model_size="base"):
             "message": "Speech recognition engine could not be initialized."
         }
 
+    wav_path = None
     try:
-        import cv2
-        import re
+        # Duration detection
         vid_duration = 10.0
         try:
+            import cv2
             cap = cv2.VideoCapture(video_path)
             fps = cap.get(cv2.CAP_PROP_FPS) or 25
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             if total_frames > 0 and fps > 0:
                 vid_duration = round(total_frames / fps, 2)
             cap.release()
-        except Exception as ve:
-            logger.debug(f"Could not read duration via cv2: {ve}")
+        except Exception:
+            pass
 
-        # High-accuracy transcription with Silero VAD, beam_size=5, and repetition suppression
-        segments, info = model.transcribe(
-            video_path,
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=200),
-            condition_on_previous_text=False,
-            word_timestamps=True
-        )
+        # Extract clean 16kHz mono PCM WAV for Whisper decoding
+        temp_dir = tempfile.gettempdir()
+        wav_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
+        cmd = [FFMPEG_EXE, "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wav_path]
+        sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        audio_target = wav_path if (sub.returncode == 0 and os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000) else video_path
+
+        # 1. First attempt with VAD filter
+        try:
+            segments, info = model.transcribe(
+                audio_target,
+                beam_size=5,
+                vad_filter=True,
+                condition_on_previous_text=False,
+                word_timestamps=True
+            )
+            segments_list = list(segments)
+        except Exception as ve:
+            logger.warning(f"VAD transcribe notice: {ve}")
+            segments_list = []
+            info = None
+
+        # 2. If VAD detected nothing or empty text, retry directly without VAD
+        has_any_text = any(getattr(s, "text", "").strip() for s in segments_list)
+        if not segments_list or not has_any_text:
+            logger.info("Retrying speech transcription without VAD filter to capture subtle or noisy speech...")
+            try:
+                segments, info = model.transcribe(
+                    audio_target,
+                    beam_size=5,
+                    vad_filter=False,
+                    condition_on_previous_text=False,
+                    word_timestamps=True
+                )
+                segments_list = list(segments)
+            except Exception as fbe:
+                logger.warning(f"Fallback transcribe notice: {fbe}")
 
         all_words = []
-        for segment in segments:
-            # Skip segments with high probability of no speech
-            if getattr(segment, 'no_speech_prob', 0) > 0.85:
+        for segment in segments_list:
+            seg_text = getattr(segment, "text", "").strip()
+            if not seg_text:
                 continue
-            if segment.words:
+
+            if getattr(segment, "words", None):
                 for w in segment.words:
                     word_str = str(w.word).strip()
-                    # Filter out zero-duration micro-ticks or empty tokens
-                    if not word_str or (float(w.end) - float(w.start) < 0.04):
+                    if not word_str:
                         continue
-                    # Repetition filter: discard pure single-letter spam (e.g. GEEEEEEEEEE or GGGGG)
-                    clean_letters = re.sub(r'[^\w]', '', word_str)
-                    if len(clean_letters) >= 4 and len(set(clean_letters.lower())) <= 1:
-                        continue
-                    # Compress excessive repetitive characters in word (e.g. Ahhhh -> Ahh)
-                    cleaned_word = re.sub(r'([a-zA-Z])\1{2,}', r'\1\1', word_str)
                     all_words.append({
-                        'start': float(w.start),
-                        'end': float(w.end),
-                        'word': cleaned_word
+                        'start': round(float(w.start), 2),
+                        'end': round(float(w.end), 2),
+                        'word': word_str
                     })
             else:
                 # Proportional fallback for segments without word timings
-                text = segment.text.strip()
-                if text:
-                    words = text.split()
-                    seg_start = float(segment.start)
-                    seg_end = float(segment.end)
-                    seg_dur = max(0.5, seg_end - seg_start)
-                    w_dur = seg_dur / max(1, len(words))
-                    for idx, w in enumerate(words):
-                        all_words.append({
-                            'start': seg_start + idx * w_dur,
-                            'end': seg_start + (idx + 1) * w_dur,
-                            'word': w
-                        })
+                words = seg_text.split()
+                seg_start = float(segment.start)
+                seg_end = float(segment.end)
+                seg_dur = max(0.4, seg_end - seg_start)
+                w_dur = seg_dur / max(1, len(words))
+                for idx, w in enumerate(words):
+                    all_words.append({
+                        'start': round(seg_start + idx * w_dur, 2),
+                        'end': round(seg_start + (idx + 1) * w_dur, 2),
+                        'word': w
+                    })
 
         cues = split_words_into_balanced_chunks(all_words, max_words=4)
 
         if cues:
-            # Sort chronologically
             cues.sort(key=lambda x: x["start"])
-
-            # Only bridge tiny micro-gaps (< 0.4s) to eliminate visual flicker.
-            # Real pauses/silence (>= 0.4s) are preserved so subtitles don't display before the person speaks!
             for i in range(len(cues) - 1):
                 gap = cues[i + 1]["start"] - cues[i]["end"]
                 if 0 < gap < 0.4:
@@ -231,7 +230,6 @@ def transcribe_video_speech(video_path, model_size="base"):
                 elif gap <= 0:
                     cues[i]["end"] = max(cues[i]["start"] + 0.5, cues[i + 1]["start"])
 
-            # Final cue handling: only extend slightly if video ends very soon
             last_end = cues[-1]["end"]
             if vid_duration - last_end <= 0.6:
                 cues[-1]["end"] = round(vid_duration, 2)
@@ -246,10 +244,11 @@ def transcribe_video_speech(video_path, model_size="base"):
 
         has_speech = len(cues) > 0
         formatted_text = "\n".join(formatted_lines)
+        detected_lang = getattr(info, "language", None) if (info and has_speech) else None
 
         return {
             "has_speech": has_speech,
-            "language": info.language if has_speech else None,
+            "language": detected_lang,
             "cues": cues,
             "formatted_text": formatted_text,
             "message": f"Successfully transcribed {len(cues)} speech cues." if has_speech else "No speech detected in audio."
@@ -263,3 +262,10 @@ def transcribe_video_speech(video_path, model_size="base"):
             "formatted_text": "",
             "message": f"Transcription error: {str(e)}"
         }
+    finally:
+        if wav_path and os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception:
+                pass
+
