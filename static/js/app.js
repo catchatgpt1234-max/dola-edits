@@ -271,32 +271,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
 
-        // Upload phase: 0% to 55% (only needed for caption mode modal)
+        // Upload phase: 0% to 60% as bytes are sent
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && isCaptionActive) {
-                const uploadPct = Math.round((e.loaded / e.total) * 55);
+                const uploadPct = Math.round((e.loaded / e.total) * 60);
                 setUploadProgress(uploadPct, `Uploading video (${Math.round((e.loaded / e.total) * 100)}%)...`, '⚡ Uploading...');
             }
         };
 
-        // Server processing phase (only for caption mode speech analysis)
+        // Server processing phase (AI speech analysis)
         xhr.upload.onload = () => {
             if (isCaptionActive) {
-                const procStatus = '⚡ Buffering & AI Analyzing Speech & Watermark...';
-                const procBadge = '🎙️ AI Speech & Watermark Syncing...';
-                setUploadProgress(70, procStatus, procBadge);
+                const procStatus = '🎙️ AI Transcribing Speech & Syncing Captions...';
+                const procBadge = '⚡ Analyzing Audio...';
+                setUploadProgress(65, procStatus, procBadge);
                 if (uploadModalTitle) {
-                    uploadModalTitle.textContent = 'AI Analyzing Speech & Watermark...';
+                    uploadModalTitle.textContent = 'AI Analyzing Voice & Speech...';
                 }
 
-                let fakeProg = 70;
+                let currentProg = 65;
                 if (uploadAnalysisInterval) clearInterval(uploadAnalysisInterval);
                 uploadAnalysisInterval = setInterval(() => {
-                    if (fakeProg < 96) {
-                        fakeProg += 4;
-                        setUploadProgress(fakeProg, procStatus, procBadge);
+                    if (currentProg < 92) {
+                        currentProg += 1;
+                        setUploadProgress(currentProg, procStatus, procBadge);
                     }
-                }, 300);
+                }, 800);
             }
         };
 

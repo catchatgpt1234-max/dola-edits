@@ -95,44 +95,27 @@ def upload_video():
         meta = get_video_metadata(save_path)
         auto_bbox = auto_detect_dola_watermark(save_path, meta)
 
-        # AI Speech Analysis: Analyze video audio to transcribe spoken words into 3-4 word cues
+        # AI Speech Analysis: Analyze video audio with lightweight model
         transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
         skip_transcription = (request.form.get("skip_transcription") == "true") or (request.headers.get("X-Skip-Transcription") == "true")
         if not skip_transcription and meta.get("has_audio"):
             try:
-                transcription = transcribe_video_speech(save_path)
+                transcription = transcribe_video_speech(save_path, model_size="tiny")
             except Exception as te:
                 print("Speech transcription warning on upload:", te)
 
-        # Clean video path definition: Auto-clean watermark on upload so clean video is immediately ready
-        clean_name = f"dolaedits_clean_{unique_name.rsplit('.', 1)[0]}.mp4"
-        clean_path = os.path.join(OUTPUT_DIR, clean_name)
-        clean_video_url = None
-
-        skip_preclean = (request.form.get("skip_preclean") == "true")
-        if not skip_preclean:
-            try:
-                process_video(
-                    video_path=save_path,
-                    output_path=clean_path,
-                    bbox=auto_bbox,
-                    method="crop",
-                    remove_watermark=True,
-                    add_captions=False
-                )
-                if os.path.exists(clean_path) and os.path.getsize(clean_path) > 1000:
-                    clean_video_url = f"/api/media/outputs/{clean_name}"
-            except Exception as ce:
-                print("Auto-clean on upload warning:", ce)
-
-        has_clean_file = (clean_video_url is not None) or (os.path.exists(clean_path) and os.path.getsize(clean_path) > 1000)
+        # Upload completes instantly without blocking on heavy video encoding
         return jsonify({
             "success": True,
             "filename": unique_name,
             "original_name": file.filename,
             "video_url": f"/api/media/uploads/{unique_name}",
-            "clean_filename": clean_name if has_clean_file else None,
-            "clean_video_url": clean_video_url or (f"/api/media/outputs/{clean_name}" if has_clean_file else None),
+            "clean_filename": None,
+            "clean_video_url": None,
+            "metadata": meta,
+            "auto_bbox": auto_bbox,
+            "transcription": transcription
+        })
             "metadata": meta,
             "auto_bbox": auto_bbox,
             "transcription": transcription
