@@ -1,0 +1,27 @@
+﻿__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Media folders
+temp/
+uploads/
+outputs/
+*.mp4
+*.zip
+*.avi
+*.mov
+*.webm
+
+# System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
