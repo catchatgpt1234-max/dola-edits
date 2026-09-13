@@ -1044,9 +1044,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let activeCue = captionState.cues.find(c => currentTime >= c.start && currentTime <= c.end);
-        // When video is paused (e.g. at 0:00 or when adjusting styles in Studio), show the nearest or first cue so user immediately sees captions!
+        // When video is paused, show the nearest cue ONLY if we are very close to it (within 1 second)
+        // This prevents showing wrong captions that don't match the visible frame's audio
         if (!activeCue && targetVideo.paused && captionState.cues.length > 0) {
-            activeCue = captionState.cues.find(c => c.start >= currentTime) || captionState.cues[0];
+            const nearestFuture = captionState.cues.find(c => c.start >= currentTime);
+            const nearestPast = [...captionState.cues].reverse().find(c => c.end <= currentTime);
+            // Show future cue only if it starts within 1 second
+            if (nearestFuture && (nearestFuture.start - currentTime) < 1.0) {
+                activeCue = nearestFuture;
+            }
+            // Or show past cue if it ended within 0.5 seconds ago
+            else if (nearestPast && (currentTime - nearestPast.end) < 0.5) {
+                activeCue = nearestPast;
+            }
+            // At time 0 (just loaded), show first cue as preview
+            else if (currentTime < 0.3) {
+                activeCue = captionState.cues[0];
+            }
         }
         if (!activeCue || !activeCue.text || !activeCue.text.trim()) {
             overlay.classList.add('hidden');

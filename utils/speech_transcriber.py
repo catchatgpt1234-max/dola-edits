@@ -11,25 +11,29 @@ from utils.watermark_engine import FFMPEG_EXE
 logger = logging.getLogger(__name__)
 
 _whisper_model = None
+_whisper_model_size = None
 
 def get_whisper_model(model_size="base"):
     """
     Returns a singleton WhisperModel instance running locally on CPU.
-    Defaults to 'base' for high-accuracy word timestamps with Silero VAD.
+    Defaults to 'base' for high-accuracy word timestamps.
+    Falls back to 'tiny' if base cannot be loaded.
     """
-    global _whisper_model
-    if _whisper_model is None:
-        from faster_whisper import WhisperModel
-        for m_size in [model_size, "tiny"]:
-            try:
-                logger.info(f"Loading faster-whisper model ({m_size}) on CPU...")
-                _whisper_model = WhisperModel(m_size, device="cpu", compute_type="int8")
-                logger.info(f"faster-whisper model ({m_size}) loaded successfully.")
-                break
-            except Exception as e:
-                logger.warning(f"Could not load whisper model ({m_size}): {e}")
-                _whisper_model = None
-    return _whisper_model
+    global _whisper_model, _whisper_model_size
+    if _whisper_model is not None and _whisper_model_size == model_size:
+        return _whisper_model
+    from faster_whisper import WhisperModel
+    for m_size in [model_size, "tiny"]:
+        try:
+            logger.info(f"Loading faster-whisper model ({m_size}) on CPU...")
+            _whisper_model = WhisperModel(m_size, device="cpu", compute_type="int8")
+            _whisper_model_size = m_size
+            logger.info(f"faster-whisper model ({m_size}) loaded successfully.")
+            return _whisper_model
+        except Exception as e:
+            logger.warning(f"Could not load whisper model ({m_size}): {e}")
+            _whisper_model = None
+    return None
 
 def split_words_into_balanced_chunks(words, max_words=4):
     """
@@ -111,11 +115,48 @@ def format_time_cue(seconds):
     rem = seconds % 60
     return f"{mins}:{rem:04.1f}"
 
+def _extract_words_from_segments(segments_list):
+    """Extracts all words with timestamps from a list of Whisper segments."""
+    all_words = []
+    for segment in segments_list:
+        seg_text = getattr(segment, "text", "").strip()
+        if not seg_text:
+            continue
+
+        if getattr(segment, "words", None):
+            for w in segment.words:
+                word_str = str(w.word).strip()
+                if not word_str:
+                    continue
+                all_words.append({
+                    'start': round(float(w.start), 2),
+                    'end': round(float(w.end), 2),
+                    'word': word_str
+                })
+        else:
+            # Proportional fallback for segments without word timings
+            words = seg_text.split()
+            seg_start = float(segment.start)
+            seg_end = float(segment.end)
+            seg_dur = max(0.4, seg_end - seg_start)
+            w_dur = seg_dur / max(1, len(words))
+            for idx, w in enumerate(words):
+                all_words.append({
+                    'start': round(seg_start + idx * w_dur, 2),
+                    'end': round(seg_start + (idx + 1) * w_dur, 2),
+                    'word': w
+                })
+    return all_words
+
 def transcribe_video_speech(video_path, model_size="base"):
     """
     Analyzes the audio track of the given video file and transcribes spoken words
     into dynamic 3-4 word cues strictly synchronized with the speaker's voice.
-    Extracts clean 16kHz mono WAV and retries with/without VAD for 100% speech capture.
+
+    Strategy for maximum accuracy on social media videos (with music/noise):
+    1. First try WITHOUT VAD (captures all speech including over background music)
+    2. Then try WITH VAD (cleaner but may miss speech over music)
+    3. Pick whichever result has MORE detected words (= better coverage)
     """
     if not os.path.exists(video_path):
         return {
@@ -158,66 +199,74 @@ def transcribe_video_speech(video_path, model_size="base"):
         sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         audio_target = wav_path if (sub.returncode == 0 and os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000) else video_path
 
-        # 1. First attempt with VAD filter
+        # Common transcription parameters optimized for social media videos
+        common_params = dict(
+            beam_size=5,
+            best_of=3,
+            patience=1.5,
+            condition_on_previous_text=True,   # Helps maintain context between sentences
+            word_timestamps=True,
+            no_speech_threshold=0.4,           # Lower = captures more speech even in noisy audio
+            log_prob_threshold=-1.0,            # Accept lower-confidence words to not miss speech
+            compression_ratio_threshold=2.8,    # Higher tolerance for repeated/patterned speech
+        )
+
+        # --- Attempt 1: WITHOUT VAD (best for short social media clips with music) ---
+        words_no_vad = []
+        info_no_vad = None
         try:
-            segments, info = model.transcribe(
+            segments, info_no_vad = model.transcribe(
                 audio_target,
-                beam_size=5,
-                vad_filter=True,
-                condition_on_previous_text=False,
-                word_timestamps=True
+                vad_filter=False,
+                **common_params
             )
             segments_list = list(segments)
+            words_no_vad = _extract_words_from_segments(segments_list)
+        except Exception as e:
+            logger.warning(f"Non-VAD transcribe notice: {e}")
+
+        # --- Attempt 2: WITH VAD (better for longer/cleaner audio) ---
+        words_with_vad = []
+        info_with_vad = None
+        try:
+            segments, info_with_vad = model.transcribe(
+                audio_target,
+                vad_filter=True,
+                vad_parameters=dict(
+                    min_silence_duration_ms=300,   # Shorter silence threshold to not merge speech
+                    speech_pad_ms=200,              # Pad speech segments to capture start/end words
+                    threshold=0.35,                 # Lower VAD threshold = more sensitive to speech
+                ),
+                **common_params
+            )
+            segments_list = list(segments)
+            words_with_vad = _extract_words_from_segments(segments_list)
         except Exception as ve:
             logger.warning(f"VAD transcribe notice: {ve}")
-            segments_list = []
-            info = None
 
-        # 2. If VAD detected nothing or empty text, retry directly without VAD
-        has_any_text = any(getattr(s, "text", "").strip() for s in segments_list)
-        if not segments_list or not has_any_text:
-            logger.info("Retrying speech transcription without VAD filter to capture subtle or noisy speech...")
-            try:
-                segments, info = model.transcribe(
-                    audio_target,
-                    beam_size=5,
-                    vad_filter=False,
-                    condition_on_previous_text=False,
-                    word_timestamps=True
-                )
-                segments_list = list(segments)
-            except Exception as fbe:
-                logger.warning(f"Fallback transcribe notice: {fbe}")
+        # --- Pick the result with MORE words (= better speech coverage) ---
+        if len(words_no_vad) >= len(words_with_vad):
+            all_words = words_no_vad
+            info = info_no_vad
+            logger.info(f"Using non-VAD result: {len(words_no_vad)} words (VAD had {len(words_with_vad)})")
+        else:
+            all_words = words_with_vad
+            info = info_with_vad
+            logger.info(f"Using VAD result: {len(words_with_vad)} words (non-VAD had {len(words_no_vad)})")
 
-        all_words = []
-        for segment in segments_list:
-            seg_text = getattr(segment, "text", "").strip()
-            if not seg_text:
+        # Filter out hallucinated/repeated words that Whisper sometimes produces
+        filtered_words = []
+        for i, w in enumerate(all_words):
+            word_text = w['word'].strip().lower()
+            # Skip if word timestamp is beyond video duration
+            if w['start'] > vid_duration + 1.0:
                 continue
-
-            if getattr(segment, "words", None):
-                for w in segment.words:
-                    word_str = str(w.word).strip()
-                    if not word_str:
-                        continue
-                    all_words.append({
-                        'start': round(float(w.start), 2),
-                        'end': round(float(w.end), 2),
-                        'word': word_str
-                    })
-            else:
-                # Proportional fallback for segments without word timings
-                words = seg_text.split()
-                seg_start = float(segment.start)
-                seg_end = float(segment.end)
-                seg_dur = max(0.4, seg_end - seg_start)
-                w_dur = seg_dur / max(1, len(words))
-                for idx, w in enumerate(words):
-                    all_words.append({
-                        'start': round(seg_start + idx * w_dur, 2),
-                        'end': round(seg_start + (idx + 1) * w_dur, 2),
-                        'word': w
-                    })
+            # Skip if this word is an exact duplicate at the same timestamp as previous
+            if i > 0 and word_text == all_words[i-1]['word'].strip().lower():
+                if abs(w['start'] - all_words[i-1]['start']) < 0.15:
+                    continue
+            filtered_words.append(w)
+        all_words = filtered_words
 
         cues = split_words_into_balanced_chunks(all_words, max_words=4)
 
@@ -268,4 +317,3 @@ def transcribe_video_speech(video_path, model_size="base"):
                 os.remove(wav_path)
             except Exception:
                 pass
-
