@@ -1225,40 +1225,36 @@ def get_task_status(task_id):
 @app.route("/api/download/<task_id>", methods=["GET"])
 def download_cleaned(task_id):
     task = TASKS.get(task_id)
-    if not task or task.get("status") != "completed":
+    output_path = None
+
+    if task and task.get("output_filename"):
+        cand = os.path.join(OUTPUT_DIR, task["output_filename"])
+        if os.path.exists(cand) and os.path.getsize(cand) > 1000:
+            output_path = cand
+
+    # Robust fallback: if memory cache missed (e.g. worker recycle), search OUTPUT_DIR by task prefix
+    if not output_path:
+        prefix = task_id[:10] if len(task_id) >= 10 else task_id
+        for f in os.listdir(OUTPUT_DIR):
+            if prefix in f and f.endswith(".mp4"):
+                cand = os.path.join(OUTPUT_DIR, f)
+                if os.path.getsize(cand) > 1000:
+                    output_path = cand
+                    break
+
+    if not output_path or not os.path.exists(output_path):
         return jsonify({"error": "File not ready"}), 404
 
-    output_path = os.path.join(OUTPUT_DIR, task["output_filename"])
-    if not os.path.exists(output_path):
-        return jsonify({"error": "Output file missing"}), 404
-
     quality = request.args.get("quality", "1080").lower().strip()
-    serve_path = output_path
+    q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
 
     orig_base = "cleaned"
-    if task.get("original_name"):
+    if task and task.get("original_name"):
         orig_base = os.path.splitext(os.path.basename(task["original_name"]))[0]
-    download_name = f"{orig_base}_cleaned.mp4"
-
-    if quality in ("original", "source", "720", "720p", "1080", "1080p", "4k", "2160", "2160p"):
-        q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
-        if task.get("quality") == q_label:
-            serve_path = output_path
-            download_name = f"{orig_base}_cleaned_{q_label}.mp4"
-        else:
-            enhanced_name = f"enhanced_{q_label}_{task['output_filename']}"
-            enhanced_path = os.path.join(OUTPUT_DIR, enhanced_name)
-            try:
-                if not os.path.exists(enhanced_path) or os.path.getsize(enhanced_path) < 1000:
-                    enhance_video_quality(output_path, enhanced_path, target_quality=q_label)
-                serve_path = enhanced_path
-                download_name = f"{orig_base}_cleaned_{q_label}.mp4"
-            except Exception as e:
-                logger.warning(f"Enhance notice: {e}, falling back to master video")
-                serve_path = output_path
+    download_name = f"dolaedits_{q_label}_{orig_base[:15]}.mp4"
 
     return send_file(
-        serve_path,
+        output_path,
         as_attachment=True,
         download_name=download_name,
         mimetype="video/mp4"
@@ -1272,34 +1268,31 @@ def download_clean_file(filename):
         clean_name = filename
 
     clean_path = os.path.join(OUTPUT_DIR, clean_name)
-    if not os.path.exists(clean_path):
-        raw_cand = os.path.join(UPLOAD_DIR, filename)
-        if os.path.exists(raw_cand):
-            meta = get_video_metadata(raw_cand)
-            auto_bbox = auto_detect_dola_watermark(raw_cand, meta)
-            process_video(video_path=raw_cand, output_path=clean_path, bbox=auto_bbox, method="crop", remove_watermark=True)
-        else:
-            return jsonify({"error": "Clean file not ready"}), 404
+    if not os.path.exists(clean_path) or os.path.getsize(clean_path) < 1000:
+        # Search disk for any existing matching output
+        base_no_ext = filename.rsplit('.', 1)[0]
+        found = False
+        for f in os.listdir(OUTPUT_DIR):
+            if base_no_ext in f and f.endswith(".mp4") and os.path.getsize(os.path.join(OUTPUT_DIR, f)) > 1000:
+                clean_path = os.path.join(OUTPUT_DIR, f)
+                found = True
+                break
+        
+        if not found:
+            raw_cand = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(raw_cand):
+                meta = get_video_metadata(raw_cand)
+                auto_bbox = auto_detect_dola_watermark(raw_cand, meta)
+                process_video(video_path=raw_cand, output_path=clean_path, bbox=auto_bbox, method="crop", remove_watermark=True)
+            else:
+                return jsonify({"error": "Clean file not ready"}), 404
 
     quality = request.args.get("quality", "1080").lower().strip()
-    serve_path = clean_path
-    download_name = f"dolaedits_clean_{clean_name[:12]}.mp4"
-
-    if quality in ("original", "source", "720", "720p", "1080", "1080p", "4k", "2160", "2160p"):
-        q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
-        enhanced_name = f"enhanced_{q_label}_{clean_name}"
-        enhanced_path = os.path.join(OUTPUT_DIR, enhanced_name)
-        try:
-            if not os.path.exists(enhanced_path) or os.path.getsize(enhanced_path) < 1000:
-                enhance_video_quality(clean_path, enhanced_path, target_quality=q_label)
-            serve_path = enhanced_path
-            download_name = f"dolaedits_clean_{q_label}_{clean_name[:8]}.mp4"
-        except Exception as e:
-            logger.warning(f"Clean enhance notice: {e}, falling back to master clean video")
-            serve_path = clean_path
+    q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
+    download_name = f"dolaedits_clean_{q_label}_{clean_name[:12]}.mp4"
 
     return send_file(
-        serve_path,
+        clean_path,
         as_attachment=True,
         download_name=download_name,
         mimetype="video/mp4"

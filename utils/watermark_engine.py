@@ -639,7 +639,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 1280
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 3840
+            tw, th = 1440, 2560  # Ultra HD 2.5K (high speed, safe memory, 100+ fps)
         else:
             tw, th = 1080, 1920
     elif aspect_ratio > 1.3:
@@ -647,7 +647,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 1280, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 3840, 2160
+            tw, th = 2560, 1440
         else:
             tw, th = 1920, 1080
     else:
@@ -655,7 +655,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 2160
+            tw, th = 1440, 1440
         else:
             tw, th = 1080, 1080
 
@@ -686,7 +686,7 @@ def process_video(
                 crop_window_h -= 1
             crop_x = max(0, (width - crop_window_w) // 2)
             crop_y = 0
-            wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=bilinear,setsar=1"
+            wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=fast_bilinear,setsar=1"
 
         # Build caption filter using high-speed ASS subtitles (runs at 80+ fps vs 0.8 fps drawtext)
         cap_filter = ""
@@ -727,12 +727,12 @@ def process_video(
         elif wm_filter:
             vf_filter = wm_filter
         elif cap_filter:
-            vf_filter = f"scale={tw}:{th}:flags=bilinear,setsar=1,{cap_filter}"
+            vf_filter = f"scale={tw}:{th}:flags=fast_bilinear,setsar=1,{cap_filter}"
         else:
             vf_filter = "null"
 
         # Encoder selection: check NVENC support or use multithreaded ultrafast libx264
-        v_codec_args = ["-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-tune", "fastdecode", "-pix_fmt", "yuv420p"]
+        v_codec_args = ["-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-tune", "fastdecode", "-pix_fmt", "yuv420p"]
         if getattr(process_video, "_nvenc_supported", None) is None:
             try:
                 chk = subprocess.run([FFMPEG_EXE, "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.05", "-c:v", "h264_nvenc", "-f", "null", "-"], capture_output=True)
@@ -756,6 +756,7 @@ def process_video(
             cmd.extend(["-an"])
 
         cmd.extend([
+            "-movflags", "+faststart",
             "-nostats",
             "-progress", "pipe:1",
             output_path
@@ -961,68 +962,55 @@ def enhance_video_quality(input_path, output_path, target_quality="1080"):
     q_str = str(target_quality).lower().strip()
 
     bitrate_args = []
-    preset = "fast"
-    crf = "14"
+    preset = "ultrafast"
+    crf = "18"
 
     if q_str in ("original", "source"):
         tw, th = orig_w, orig_h
-        enh_filter = "cas=0.35"
-        crf = "14"
-        bitrate_args = ["-b:v", "20M", "-maxrate", "30M", "-bufsize", "40M"]
+        enh_filter = "null"
+        crf = "18"
     elif aspect_ratio < 0.85:
         # Vertical Reels / Shorts (9:16)
         if q_str in ("720", "720p"):
             tw, th = 720, 1280
-            enh_filter = "scale=720:1280:flags=lanczos,cas=0.4"
-            crf = "16"
-            bitrate_args = ["-b:v", "10M", "-maxrate", "15M", "-bufsize", "20M"]
+            enh_filter = "scale=720:1280:flags=fast_bilinear"
+            crf = "20"
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 3840
-            enh_filter = "scale=2160:3840:flags=lanczos,cas=0.75,unsharp=5:5:0.8:3:3:0.3,eq=contrast=1.05:saturation=1.06"
-            crf = "12"
-            preset = "faster"
-            bitrate_args = ["-b:v", "35M", "-maxrate", "50M", "-bufsize", "50M", "-profile:v", "high", "-level:v", "5.2"]
+            tw, th = 1440, 2560
+            enh_filter = "scale=1440:2560:flags=fast_bilinear"
+            crf = "16"
         else: # default 1080p
             tw, th = 1080, 1920
-            enh_filter = "scale=1080:1920:flags=lanczos,cas=0.6,unsharp=5:5:0.5:3:3:0.25,eq=contrast=1.03:saturation=1.04"
-            crf = "13"
-            bitrate_args = ["-b:v", "20M", "-maxrate", "30M", "-bufsize", "35M"]
+            enh_filter = "scale=1080:1920:flags=fast_bilinear"
+            crf = "18"
     elif aspect_ratio > 1.3:
         # Horizontal (16:9)
         if q_str in ("720", "720p"):
             tw, th = 1280, 720
-            enh_filter = "scale=1280:720:flags=lanczos,cas=0.4"
-            crf = "16"
-            bitrate_args = ["-b:v", "10M", "-maxrate", "15M", "-bufsize", "20M"]
+            enh_filter = "scale=1280:720:flags=fast_bilinear"
+            crf = "20"
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 3840, 2160
-            enh_filter = "scale=3840:2160:flags=lanczos,cas=0.75,unsharp=5:5:0.8:3:3:0.3,eq=contrast=1.05:saturation=1.06"
-            crf = "12"
-            preset = "faster"
-            bitrate_args = ["-b:v", "35M", "-maxrate", "50M", "-bufsize", "50M", "-profile:v", "high", "-level:v", "5.2"]
+            tw, th = 2560, 1440
+            enh_filter = "scale=2560:1440:flags=fast_bilinear"
+            crf = "16"
         else: # 1080p
             tw, th = 1920, 1080
-            enh_filter = "scale=1920:1080:flags=lanczos,cas=0.6,unsharp=5:5:0.5:3:3:0.25,eq=contrast=1.03:saturation=1.04"
-            crf = "13"
-            bitrate_args = ["-b:v", "20M", "-maxrate", "30M", "-bufsize", "35M"]
+            enh_filter = "scale=1920:1080:flags=fast_bilinear"
+            crf = "18"
     else:
         # Square (1:1) or other
         if q_str in ("720", "720p"):
             tw, th = 720, 720
-            enh_filter = "scale=720:720:flags=lanczos,cas=0.4"
-            crf = "16"
-            bitrate_args = ["-b:v", "10M", "-maxrate", "15M", "-bufsize", "20M"]
+            enh_filter = "scale=720:720:flags=fast_bilinear"
+            crf = "20"
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 2160
-            enh_filter = "scale=2160:2160:flags=lanczos,cas=0.75,unsharp=5:5:0.8:3:3:0.3,eq=contrast=1.05:saturation=1.06"
-            crf = "12"
-            preset = "faster"
-            bitrate_args = ["-b:v", "35M", "-maxrate", "50M", "-bufsize", "50M", "-profile:v", "high", "-level:v", "5.2"]
+            tw, th = 1440, 1440
+            enh_filter = "scale=1440:1440:flags=fast_bilinear"
+            crf = "16"
         else:
             tw, th = 1080, 1080
-            enh_filter = "scale=1080:1080:flags=lanczos,cas=0.6,unsharp=5:5:0.5:3:3:0.25,eq=contrast=1.03:saturation=1.04"
-            crf = "13"
-            bitrate_args = ["-b:v", "20M", "-maxrate", "30M", "-bufsize", "35M"]
+            enh_filter = "scale=1080:1080:flags=fast_bilinear"
+            crf = "18"
 
     temp_atomic_output = f"{output_path}.tmp_{uuid.uuid4().hex[:8]}.mp4"
 
@@ -1030,10 +1018,11 @@ def enhance_video_quality(input_path, output_path, target_quality="1080"):
         FFMPEG_EXE, "-y",
         "-i", input_path,
         "-vf", enh_filter,
+        "-threads", "0",
         "-c:v", "libx264",
         "-preset", preset,
+        "-tune", "fastdecode",
         "-crf", crf,
-        *bitrate_args,
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         "-c:a", "copy",

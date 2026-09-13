@@ -1522,7 +1522,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (processBufferingBadgeText) {
                         processBufferingBadgeText.textContent = task.percent >= 90 ? '⚡ Buffering & Finalizing Audio...' : '⚡ Buffering & AI Processing...';
                     }
-                    const displayFps = (task.fps > 1.0) ? `${task.fps} fps` : (task.current_frame > 5 ? `${task.fps} fps` : 'Starting...');
+                    const displayFps = (task.fps > 1.0) ? `${task.fps}` : (task.current_frame > 5 ? `${task.fps}` : 'Starting...');
                     updateProgressUI(
                         task.percent,
                         task.current_frame,
@@ -1534,7 +1534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (task.status === 'completed') {
                     clearInterval(state.pollInterval);
                     if (processBufferingBadgeText) processBufferingBadgeText.textContent = '🎉 Complete!';
-                    updateProgressUI(100, task.total_frames, task.total_frames, task.fps, 'Done!', 'Complete! Loading clean video...');
+                    updateProgressUI(100, task.total_frames, task.total_frames, task.fps || 'Done', 'Done!', 'Complete! Loading clean video...');
 
                     setTimeout(() => {
                         processingModal.classList.add('hidden');
@@ -1564,7 +1564,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         linearFill.style.width = `${pct}%`;
         statFrames.textContent = `${cur} / ${total}`;
-        statFps.textContent = `${fps} fps`;
+        const fpsStr = String(fps);
+        statFps.textContent = fpsStr.includes('fps') || fpsStr.includes('Starting') || fpsStr.includes('Done') ? fpsStr : `${fpsStr} fps`;
         statEta.textContent = eta;
         processingStatusText.textContent = statusMsg;
     }
