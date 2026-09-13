@@ -1451,12 +1451,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const duration = (state.videoMeta && state.videoMeta.duration) || 10;
-            if (captionTextInput && captionTextInput.value.trim()) {
+            if ((!captionState.cues || captionState.cues.length === 0) && captionTextInput && captionTextInput.value.trim()) {
                 captionState.cues = parseSubtitlesText(captionTextInput.value.trim(), duration);
             }
-            if (captionState.cues.length === 0) {
-                alert('Please enter caption text in the box above before downloading.');
-                if (captionTextInput) captionTextInput.focus();
+            if (!captionState.cues || captionState.cues.length === 0) {
+                alert('AI is still transcribing voice or no speech was detected in this video. Please wait a few seconds or try again.');
                 return;
             }
 

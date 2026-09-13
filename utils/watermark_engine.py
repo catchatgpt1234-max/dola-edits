@@ -241,16 +241,16 @@ def create_ass_subtitles_file(captions, width, height, style_name="classic", siz
         "gold": {"prim": "&H0000D7FF", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 3, "shdw": 2},
         "blue": {"prim": "&H00FFE500", "outl": "&H00000000", "back": "&H80884400", "border": 1, "outw": border_w + 3, "shdw": 2},
         "neon": {"prim": "&H00CCFF00", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 2, "shdw": 1},
-        "boxed": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H80000000", "border": 3, "outw": border_w + 2, "shdw": 0},
-        "glass": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&HB0121622", "border": 3, "outw": border_w + 2, "shdw": 0},
-        "aliabdaal": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&HB0141414", "border": 3, "outw": border_w + 2, "shdw": 0},
-        "devinjatho": {"prim": "&H0000E6FF", "outl": "&H00000000", "back": "&HD0050505", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "boxed": {"prim": "&H00FFFFFF", "outl": "&H80000000", "back": "&H80000000", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "glass": {"prim": "&H00FFFFFF", "outl": "&HB0221612", "back": "&HB0221612", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "aliabdaal": {"prim": "&H00FFFFFF", "outl": "&HB0141414", "back": "&HB0141414", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "devinjatho": {"prim": "&H0000E6FF", "outl": "&HD0050505", "back": "&HD0050505", "border": 3, "outw": border_w + 4, "shdw": 0},
         "karaoke": {"prim": "&H0020FF80", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 3, "shdw": 3},
         "cinematic": {"prim": "&H00F7F5F5", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(1, border_w - 1), "shdw": 2},
         "synthwave": {"prim": "&H00FF3399", "outl": "&H00000000", "back": "&H807F00FF", "border": 1, "outw": border_w + 2, "shdw": 3},
         "frost": {"prim": "&H00FFFFD0", "outl": "&H00000000", "back": "&H80882200", "border": 1, "outw": border_w + 3, "shdw": 3},
         "velvet": {"prim": "&H002222E6", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 2, "shdw": 2},
-        "purplepop": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H15C50065", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "purplepop": {"prim": "&H00FFFFFF", "outl": "&H00C50065", "back": "&H00C50065", "border": 3, "outw": border_w + 4, "shdw": 0},
     }
     st = ASS_STYLE_MAP.get(style_name, ASS_STYLE_MAP["classic"])
 
