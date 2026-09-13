@@ -3127,6 +3127,19 @@ body.studio-view-active .features-section,
          0 2px 6px rgba(0, 0, 0, 0.9);
 }
 
+/* Preset: Purple Box Pop (Baby Video Style) */
+.live-caption-overlay[data-style="purplepop"] .caption-text-box {
+    color: #ffffff;
+    background: #6500c5;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 15px rgba(101, 0, 197, 0.6);
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
 /* ==========================================================================
    CAPTION STUDIO PANEL
    ========================================================================== */
@@ -3399,6 +3412,13 @@ body.studio-view-active .features-section,
     background: #240004;
     color: #e62222;
     border: 1px solid #e62222;
+}
+
+.style-purplepop-icon {
+    background: #6500c5;
+    color: #ffffff;
+    border: 1px solid #a855f7;
+    font-weight: 900;
 }
 
 /* Size Segmented Buttons */
@@ -3794,10 +3814,10 @@ body.studio-view-active .features-section,
 /* Grand, Sleek & Compact Player Container with Visible Play/Pause Controls - Stretched Down */
 .comparison-studio-grid.caption-studio-mode .clean-player-container:not(:fullscreen):not(.is-fullscreen),
 .comparison-studio-grid.caption-studio-mode .clean-player-container.is-vertical:not(:fullscreen):not(.is-fullscreen) {
-    width: clamp(270px, 30vw, 315px) !important;
+    width: clamp(280px, 32vw, 340px) !important;
     height: 100% !important;
-    min-height: 420px !important;
-    max-height: clamp(430px, 62vh, 480px) !important;
+    min-height: 490px !important;
+    max-height: clamp(520px, 72vh, 600px) !important;
     border-radius: 14px;
     overflow: hidden;
     background: #040711;
@@ -3829,15 +3849,17 @@ body.studio-view-active .features-section,
 .comparison-studio-grid.caption-studio-mode .external-control-bar {
     flex: 0 0 auto !important;
     width: 100% !important;
-    padding: 4px 8px 6px !important;
+    padding: 6px 12px 8px !important;
     background: rgba(8, 11, 18, 0.98) !important;
-    border-top: 1px solid rgba(0, 242, 254, 0.2) !important;
+    border-top: 1px solid rgba(0, 242, 254, 0.25) !important;
     box-sizing: border-box !important;
+    display: block !important;
+    z-index: 20 !important;
 }
 
 .comparison-studio-grid.caption-studio-mode .timeline-container {
-    margin-bottom: 2px !important;
-    height: 8px !important;
+    margin-bottom: 4px !important;
+    height: 10px !important;
 }
 
 .comparison-studio-grid.caption-studio-mode .controls-row {
@@ -3848,7 +3870,7 @@ body.studio-view-active .features-section,
 }
 
 .comparison-studio-grid.caption-studio-mode .ctrl-icon-btn {
-    padding: 2px 4px !important;
+    padding: 4px 6px !important;
     color: #00f2fe !important;
 }
 
@@ -3857,17 +3879,18 @@ body.studio-view-active .features-section,
     flex: 1 1 0%;
     min-width: 0;
     margin-top: 0;
-    padding: 0.75rem 1.25rem 0.75rem;
+    padding: 1rem 1.4rem 1.1rem;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    gap: 0.4rem;
+    justify-content: space-between;
+    gap: 0.6rem;
     box-sizing: border-box;
     border-radius: 16px;
     background: rgba(12, 17, 30, 0.96);
     border: 1.5px solid rgba(168, 85, 247, 0.3);
     box-shadow: 0 12px 38px rgba(0, 0, 0, 0.65), 0 0 25px rgba(168, 85, 247, 0.12);
-    max-height: calc(100vh - 140px);
+    min-height: 490px;
+    max-height: clamp(520px, 72vh, 600px);
     overflow-y: auto;
 }
 
@@ -3877,8 +3900,8 @@ body.studio-view-active .features-section,
 
 .comparison-studio-grid.caption-studio-mode .caption-controls-grid {
     display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 0.65rem;
+    grid-template-columns: 1.25fr 0.75fr;
+    gap: 0.85rem;
     align-items: start;
     margin-bottom: 0;
 }
@@ -3886,22 +3909,22 @@ body.studio-view-active .features-section,
 .comparison-studio-grid.caption-studio-mode .caption-ctrl-group {
     display: flex;
     flex-direction: column;
-    gap: 0.22rem;
+    gap: 0.35rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .ctrl-label {
-    font-size: 0.68rem;
+    font-size: 0.74rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #94a3b8;
-    margin-bottom: 0.1rem;
+    margin-bottom: 0.15rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .caption-style-chips {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.26rem;
+    gap: 0.35rem;
     max-height: none;
     overflow: visible;
     padding-right: 0;
@@ -3918,57 +3941,73 @@ body.studio-view-active .features-section,
 }
 
 .comparison-studio-grid.caption-studio-mode .style-chip {
-    padding: 0.22rem 0.36rem;
-    font-size: 0.67rem;
-    gap: 0.26rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.38rem 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    gap: 0.38rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    border-radius: 6px;
+    border-radius: 8px;
+    transition: all 0.18s ease;
+}
+
+.comparison-studio-grid.caption-studio-mode .style-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(0, 242, 254, 0.4);
+    transform: translateY(-1px);
+}
+
+.comparison-studio-grid.caption-studio-mode .style-chip.active {
+    background: linear-gradient(135deg, rgba(0, 242, 254, 0.22) 0%, rgba(168, 85, 247, 0.28) 100%) !important;
+    border-color: #00f2fe !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    box-shadow: 0 0 14px rgba(0, 242, 254, 0.4), inset 0 0 8px rgba(0, 242, 254, 0.15) !important;
 }
 
 .comparison-studio-grid.caption-studio-mode .style-chip.active::after {
-    width: 12px;
-    height: 12px;
-    font-size: 0.55rem;
+    width: 14px;
+    height: 14px;
+    font-size: 0.65rem;
     flex-shrink: 0;
 }
 
 .comparison-studio-grid.caption-studio-mode .chip-preview-box {
-    width: 15px;
-    height: 15px;
-    font-size: 0.58rem;
-    border-radius: 3px;
+    width: 18px;
+    height: 18px;
+    font-size: 0.68rem;
+    border-radius: 4px;
     flex-shrink: 0;
 }
 
 .comparison-studio-grid.caption-studio-mode .size-segmented-btn {
-    padding: 1.5px;
-    gap: 1.5px;
-    margin-bottom: 0.15rem;
+    padding: 2.5px;
+    gap: 2.5px;
+    margin-bottom: 0.25rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .seg-btn {
-    padding: 0.16rem 0.35rem;
-    font-size: 0.68rem;
+    padding: 0.28rem 0.5rem;
+    font-size: 0.74rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-row {
     display: flex;
     flex-direction: column;
-    gap: 0.16rem;
+    gap: 0.28rem;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: var(--radius-sm);
-    padding: 0.22rem 0.5rem;
+    padding: 0.35rem 0.65rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-item {
     display: flex;
     flex-direction: column;
-    gap: 0.08rem;
+    gap: 0.12rem;
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-label-line {
@@ -3978,23 +4017,23 @@ body.studio-view-active .features-section,
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-title {
-    font-size: 0.67rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: #94a3b8;
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-val {
-    font-size: 0.67rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #e2e8f0;
     background: rgba(255, 255, 255, 0.08);
-    padding: 0px 4px;
-    border-radius: 3px;
+    padding: 1px 5px;
+    border-radius: 4px;
 }
 
 .comparison-studio-grid.caption-studio-mode .slider-input {
     width: 100%;
-    height: 3px;
+    height: 4px;
     accent-color: #a855f7;
     cursor: pointer;
     background: rgba(255, 255, 255, 0.15);
@@ -4009,28 +4048,32 @@ body.studio-view-active .features-section,
 
 /* Subtitles Textarea Block */
 .comparison-studio-grid.caption-studio-mode .caption-editor-block {
-    padding: 0.3rem 0.75rem;
-    gap: 0.2rem;
-    margin-top: 0.05rem;
-    margin-bottom: 0.15rem;
+    padding: 0.45rem 0.85rem;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    margin-bottom: 0.2rem;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: var(--radius-sm);
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .comparison-studio-grid.caption-studio-mode .caption-inline-textarea {
-    min-height: 52px;
-    max-height: 68px;
-    height: 56px;
+    min-height: 84px;
+    max-height: 120px;
+    height: 96px;
     font-size: 0.88rem;
-    padding: 0.35rem 0.65rem;
-    line-height: 1.35;
+    padding: 0.5rem 0.75rem;
+    line-height: 1.45;
+    flex: 1 1 auto;
 }
 
 /* Action Row: Top Selectors Group + Bottom Full-Width Action Button */
 .comparison-studio-grid.caption-studio-mode .caption-action-row {
     margin-top: 0.4rem;
-    padding-top: 0.65rem;
+    padding-top: 0.75rem;
     padding-bottom: 0.2rem;
     display: flex;
     flex-direction: column;

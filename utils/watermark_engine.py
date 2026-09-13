@@ -157,6 +157,11 @@ CAPTION_STYLES = {
         "id": "velvet",
         "label": "Ruby Velvet",
         "dt": lambda border_w, p: f"fontcolor=0xE62222:borderw={border_w + 2}:bordercolor=black:shadowcolor=black@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+    },
+    "purplepop": {
+        "id": "purplepop",
+        "label": "Purple Box Pop",
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x6500C5@0.92:boxborderw={max(6, round(p * 0.28))}:borderw={max(1, border_w - 1)}:bordercolor=black"
     }
 }
 
@@ -245,6 +250,7 @@ def create_ass_subtitles_file(captions, width, height, style_name="classic", siz
         "synthwave": {"prim": "&H00FF3399", "outl": "&H00000000", "back": "&H807F00FF", "border": 1, "outw": border_w + 2, "shdw": 3},
         "frost": {"prim": "&H00FFFFD0", "outl": "&H00000000", "back": "&H80882200", "border": 1, "outw": border_w + 3, "shdw": 3},
         "velvet": {"prim": "&H002222E6", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 2, "shdw": 2},
+        "purplepop": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H15C50065", "border": 3, "outw": border_w + 3, "shdw": 0},
     }
     st = ASS_STYLE_MAP.get(style_name, ASS_STYLE_MAP["classic"])
 
