@@ -262,41 +262,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const formData = new FormData();
         formData.append('video', file);
-        if (!isCaptionActive) {
-            // Single video watermark only: Skip speech analysis and skip server pre-clean so studio opens directly!
-            formData.append('skip_transcription', 'true');
-            formData.append('skip_preclean', 'true');
-        }
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
 
-        // Upload phase: 0% to 60% as bytes are sent
+        // Real upload progress: 0% to 100% as client sends video bytes to server
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && isCaptionActive) {
-                const uploadPct = Math.round((e.loaded / e.total) * 60);
-                setUploadProgress(uploadPct, `Uploading video (${Math.round((e.loaded / e.total) * 100)}%)...`, '⚡ Uploading...');
+                const uploadPct = Math.min(99, Math.round((e.loaded / e.total) * 100));
+                setUploadProgress(uploadPct, `Uploading video (${uploadPct}%)...`, '⚡ Uploading...');
             }
         };
 
-        // Server processing phase (AI speech analysis)
         xhr.upload.onload = () => {
             if (isCaptionActive) {
-                const procStatus = '🎙️ AI Transcribing Speech & Syncing Captions...';
-                const procBadge = '⚡ Analyzing Audio...';
-                setUploadProgress(65, procStatus, procBadge);
-                if (uploadModalTitle) {
-                    uploadModalTitle.textContent = 'AI Analyzing Voice & Speech...';
-                }
-
-                let currentProg = 65;
-                if (uploadAnalysisInterval) clearInterval(uploadAnalysisInterval);
-                uploadAnalysisInterval = setInterval(() => {
-                    if (currentProg < 92) {
-                        currentProg += 1;
-                        setUploadProgress(currentProg, procStatus, procBadge);
-                    }
-                }, 800);
+                setUploadProgress(100, 'Saving video and preparing studio...', '⚡ Finalizing...');
             }
         };
 
@@ -309,16 +289,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const data = JSON.parse(xhr.responseText);
                     if (data.success) {
-                        if (isCaptionActive) {
-                            setUploadProgress(100, 'Video & Voice Analyzed Successfully!', '🎉 Complete!');
-                            setTimeout(() => {
-                                if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
-                                loadVideoIntoWorkspace(data);
-                            }, 350);
-                        } else {
-                            if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
-                            loadVideoIntoWorkspace(data);
-                        }
+                        if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
+                        loadVideoIntoWorkspace(data);
                         return;
                     } else {
                         throw new Error(data.error || 'Failed to analyze video');
@@ -465,16 +437,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateLiveSubtitleOverlay(0);
             } else {
                 captionState.cues = [];
-                if (captionTextInput) {
-                    captionTextInput.value = '';
-                    captionTextInput.placeholder = 'No speech detected in this video. You can type custom subtitles here...';
+                // If video has audio, trigger background speech transcription asynchronously
+                if (data.metadata && data.metadata.has_audio) {
+                    if (captionSpeechBadge) {
+                        captionSpeechBadge.textContent = '⏳ AI Transcribing voice in background...';
+                        captionSpeechBadge.classList.remove('hidden');
+                    }
+                    if (captionTextInput) {
+                        captionTextInput.placeholder = 'Transcribing spoken words from video... (or type your own)';
+                    }
+                    fetch('/api/transcribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: data.filename })
+                    })
+                    .then(res => res.json())
+                    .then(transData => {
+                        if (transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
+                            if (captionTextInput && (!captionTextInput.value || captionTextInput.value.trim() === '')) {
+                                captionTextInput.value = transData.formatted_text;
+                            }
+                            captionState.cues = transData.cues;
+                            if (captionSpeechBadge) {
+                                captionSpeechBadge.textContent = `🎙️ AI Speech Synced (${transData.cues.length} lines)`;
+                                captionSpeechBadge.classList.remove('hidden');
+                            }
+                            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+                            updateLiveSubtitleOverlay(sourceVideo ? sourceVideo.currentTime : 0);
+                        } else {
+                            if (captionSpeechBadge) {
+                                captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
+                                captionSpeechBadge.classList.remove('hidden');
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('Background transcription error:', err);
+                        if (captionSpeechBadge) {
+                            captionSpeechBadge.textContent = '🔇 Manual Subtitle Mode';
+                            captionSpeechBadge.classList.remove('hidden');
+                        }
+                    });
+                } else {
+                    if (captionTextInput) {
+                        captionTextInput.value = '';
+                        captionTextInput.placeholder = 'No audio stream in this video. You can type custom subtitles here...';
+                    }
+                    if (captionSpeechBadge) {
+                        captionSpeechBadge.textContent = '🔇 No Audio in Video';
+                        captionSpeechBadge.classList.remove('hidden');
+                    }
+                    if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
+                    updateLiveSubtitleOverlay(0);
                 }
-                if (captionSpeechBadge) {
-                    captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
-                    captionSpeechBadge.classList.remove('hidden');
-                }
-                if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-                updateLiveSubtitleOverlay(0);
             }
         } else {
             if (captionSpeechBadge) captionSpeechBadge.classList.add('hidden');

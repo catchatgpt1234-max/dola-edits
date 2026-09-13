@@ -95,16 +95,11 @@ def upload_video():
         meta = get_video_metadata(save_path)
         auto_bbox = auto_detect_dola_watermark(save_path, meta)
 
-        # AI Speech Analysis: Analyze video audio with lightweight model
+        # AI Speech Analysis: Initialized as empty during upload so file saves instantly in <2 seconds.
+        # Transcription runs asynchronously in the background via /api/transcribe once studio opens.
         transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
-        skip_transcription = (request.form.get("skip_transcription") == "true") or (request.headers.get("X-Skip-Transcription") == "true")
-        if not skip_transcription and meta.get("has_audio"):
-            try:
-                transcription = transcribe_video_speech(save_path, model_size="tiny")
-            except Exception as te:
-                print("Speech transcription warning on upload:", te)
 
-        # Upload completes instantly without blocking on heavy video encoding
+        # Upload completes instantly without blocking on heavy video encoding or Whisper model
         return jsonify({
             "success": True,
             "filename": unique_name,
@@ -112,10 +107,6 @@ def upload_video():
             "video_url": f"/api/media/uploads/{unique_name}",
             "clean_filename": None,
             "clean_video_url": None,
-            "metadata": meta,
-            "auto_bbox": auto_bbox,
-            "transcription": transcription
-        })
             "metadata": meta,
             "auto_bbox": auto_bbox,
             "transcription": transcription
