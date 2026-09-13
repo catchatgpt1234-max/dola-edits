@@ -2191,15 +2191,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const remainingSlots = 50 - bulkQueue.length;
+        const remainingSlots = 20 - bulkQueue.length;
         if (remainingSlots <= 0) {
-            alert('Maximum 50 videos limit reached in bulk queue.');
+            alert('Maximum 20 videos limit reached in bulk queue.');
             return;
         }
 
         const toAdd = validVideos.slice(0, remainingSlots);
         if (validVideos.length > remainingSlots) {
-            alert(`Added ${remainingSlots} videos (Maximum 50 videos limit).`);
+            alert(`Added ${remainingSlots} videos (Maximum 20 videos limit).`);
         }
 
         const newItems = toAdd.map(file => ({
@@ -2455,7 +2455,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBulkQueue() {
         if (!bulkQueueList) return;
         bulkQueueList.innerHTML = '';
-        if (bulkCounterPill) bulkCounterPill.textContent = `${bulkQueue.length} / 50 Videos`;
+        if (bulkCounterPill) bulkCounterPill.textContent = `${bulkQueue.length} / 20 Videos`;
 
         if (bulkQueue.length === 0) {
             if (bulkQueueCard) bulkQueueCard.classList.add('hidden');
@@ -2679,7 +2679,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateBulkCounters() {
         const completed = bulkQueue.filter(i => i.status === 'completed').length;
         const total = bulkQueue.length;
-        if (bulkCounterPill) bulkCounterPill.textContent = `${total} / 50 Videos`;
+        if (bulkCounterPill) bulkCounterPill.textContent = `${total} / 20 Videos`;
         if (bulkSummaryStats) bulkSummaryStats.textContent = `Completed ${completed} of ${total}`;
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
         if (bulkMasterFill) bulkMasterFill.style.width = `${pct}%`;
@@ -3547,21 +3547,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const completedTaskIds = [];
 
-        for (let i = 0; i < totalItems; i++) {
-            if (isBulkBatchAborted) break;
-            const item = bulkQueue[i];
+        async function processBatchItem(item, i) {
+            if (isBulkBatchAborted) return;
             item.status = 'processing';
-            item.percent = 10;
+            item.percent = 15;
             updateBulkItemRow(item);
 
             if (bulkSummaryTitle) {
                 bulkSummaryTitle.textContent = `Processing Video ${i + 1} of ${totalItems}: ${item.name} [${qName}]...`;
-            }
-            if (bulkSummaryStats) {
-                bulkSummaryStats.textContent = `Completed ${completedTaskIds.length} of ${totalItems}`;
-            }
-            if (bulkMasterFill) {
-                bulkMasterFill.style.width = `${Math.round((i / totalItems) * 100)}%`;
             }
 
             try {
@@ -3599,16 +3592,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isBulkBatchAborted) {
                     item.status = 'stopped';
                     updateBulkItemRow(item);
-                    break;
+                    return;
                 }
 
-                item.percent = 20;
+                item.percent = 30;
                 updateBulkItemRow(item);
 
                 // 2. Determine per-video cues:
-                // CRITICAL USER REQUIREMENT:
-                // 1. User custom cues for this video > 2. This video's OWN speech transcription > 3. EMPTY
-                // NEVER fall back to dummy English cues! If no speech, NO subtitles added!
                 let videoCues = [];
                 if (item.hasUserEditedSubtitles && item.customCues && item.customCues.length > 0) {
                     videoCues = item.customCues;
@@ -3667,7 +3657,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                 item.downloadUrl = `/api/download/${taskId}?quality=${qLabel}`;
                                 updateBulkItemRow(item);
 
-                                // User requirement: If single video download selected, auto-download each video as soon as it finishes!
+                                if (bulkSummaryTitle) {
+                                    bulkSummaryTitle.textContent = `Completed Video ${completedTaskIds.length} of ${totalItems} [${qName}]...`;
+                                }
+                                if (bulkSummaryStats) {
+                                    bulkSummaryStats.textContent = `Completed ${completedTaskIds.length} of ${totalItems}`;
+                                }
+                                if (bulkMasterFill) {
+                                    bulkMasterFill.style.width = `${Math.round((completedTaskIds.length / totalItems) * 100)}%`;
+                                }
+
                                 if (chosenFormat === 'single') {
                                     triggerSingleVideoDownload(item, qLabel);
                                 }
@@ -3679,11 +3678,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 reject(new Error(statusData.error || 'Render failed'));
                             } else {
                                 const itemPct = statusData.percent || 0;
-                                item.percent = Math.max(18, Math.min(99, Math.round(18 + (itemPct * 0.8))));
+                                item.percent = Math.max(25, Math.min(99, Math.round(25 + (itemPct * 0.74))));
                                 updateBulkItemRow(item);
-
-                                const currentOverall = Math.min(99, Math.round(((i + (itemPct / 100)) / totalItems) * 100));
-                                if (bulkMasterFill) bulkMasterFill.style.width = `${currentOverall}%`;
                             }
                         } catch (e) {
                             clearInterval(pollInterval);
@@ -3697,6 +3693,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateBulkItemRow(item);
             }
         }
+
+        // Parallel Concurrent Worker Pool (processes 2 videos simultaneously for 2x speed)
+        const CONCURRENCY = 2;
+        let queueIdx = 0;
+
+        async function worker() {
+            while (queueIdx < totalItems) {
+                if (isBulkBatchAborted) break;
+                const idx = queueIdx++;
+                await processBatchItem(bulkQueue[idx], idx);
+            }
+        }
+
+        const workers = [];
+        const numWorkers = Math.min(CONCURRENCY, totalItems);
+        for (let w = 0; w < numWorkers; w++) {
+            workers.push(worker());
+        }
+        await Promise.all(workers);
 
         isBulkProcessing = false;
         if (btnStopBulkBatch) {

@@ -754,7 +754,7 @@ def process_video(
         ]
 
         if has_audio:
-            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            cmd.extend(["-c:a", "copy"])
         else:
             cmd.extend(["-an"])
 
