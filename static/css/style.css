@@ -2847,6 +2847,47 @@ body.studio-view-active .features-section,
 }
 
 /* ==========================================================================
+   AI TRANSCRIPTION BUFFERING OVERLAY (Centered spinner on video preview)
+   ========================================================================== */
+.transcribe-buffering-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 15;
+    pointer-events: none;
+    border-radius: inherit;
+}
+.transcribe-buffering-overlay.hidden {
+    display: none !important;
+}
+.transcribe-spinner {
+    width: 38px;
+    height: 38px;
+    border: 3px solid rgba(255, 255, 255, 0.15);
+    border-top-color: #00f2fe;
+    border-radius: 50%;
+    animation: transcribeSpin 0.8s linear infinite;
+}
+.transcribe-label {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.88);
+    letter-spacing: 0.3px;
+}
+@keyframes transcribeSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
    LIVE CAPTION OVERLAYS (Syncs inside video player screens)
    ========================================================================== */
 .live-caption-overlay {
