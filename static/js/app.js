@@ -2559,6 +2559,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
+    function setMonotonicItemPercent(item, newPct) {
+        if (!item) return;
+        const current = (typeof item.percent === 'number') ? item.percent : 0;
+        const target = Math.min(100, Math.max(current, Math.round(newPct)));
+        item.percent = target;
+        updateBulkItemRow(item);
+    }
+
     function updateBulkItemRow(item) {
         const row = document.getElementById(`item_${item.id}`);
         if (!row) return;
@@ -2803,38 +2811,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bulkDockStatusText) bulkDockStatusText.textContent = `⚡ Processing videos [${qName}]...`;
 
         const totalItems = pendingItems.length;
+        let completedCount = 0;
+        const CONCURRENCY = 2;
+        let queueIdx = 0;
 
-        for (let idx = 0; idx < pendingItems.length; idx++) {
-            if (isBulkBatchAborted) break;
-            const item = pendingItems[idx];
-            if (bulkSummaryTitle) {
-                bulkSummaryTitle.textContent = `Processing Video ${idx + 1} of ${totalItems}: ${item.name} [${qName}]...`;
-            }
-            if (bulkSummaryStats) {
-                bulkSummaryStats.textContent = `Completed ${idx} of ${totalItems}`;
-            }
-            if (bulkMasterFill) {
-                bulkMasterFill.style.width = `${Math.round((idx / totalItems) * 100)}%`;
-            }
+        async function bulkWorker() {
+            while (queueIdx < totalItems) {
+                if (isBulkBatchAborted) break;
+                const idx = queueIdx++;
+                const item = pendingItems[idx];
 
-            await processSingleBulkItem(item, idx, totalItems, q);
-            if (isBulkBatchAborted) break;
+                if (bulkSummaryTitle) {
+                    bulkSummaryTitle.textContent = `Processing Video ${Math.min(completedCount + 1, totalItems)} of ${totalItems}: ${item.name} [${qName}]...`;
+                }
 
-            // As requested in Img 2: advance progress line forward cleanly as each video completes
-            if (bulkMasterFill) {
-                bulkMasterFill.style.width = `${Math.round(((idx + 1) / totalItems) * 100)}%`;
-            }
-            if (bulkSummaryStats) {
-                bulkSummaryStats.textContent = `Completed ${idx + 1} of ${totalItems}`;
-            }
+                await processSingleBulkItem(item, idx, totalItems, q);
+                if (isBulkBatchAborted) break;
 
-            // User requirement: If single video download selected, download MP4 immediately on completion of each video!
-            if (format === 'single' && item.status === 'completed' && item.taskId) {
-                triggerSingleVideoDownload(item, q);
-            }
+                completedCount++;
+                if (bulkMasterFill) {
+                    bulkMasterFill.style.width = `${Math.round((completedCount / totalItems) * 100)}%`;
+                }
+                if (bulkSummaryStats) {
+                    bulkSummaryStats.textContent = `Completed ${completedCount} of ${totalItems}`;
+                }
+                if (bulkSummaryTitle) {
+                    bulkSummaryTitle.textContent = `Processing Video ${Math.min(completedCount + 1, totalItems)} of ${totalItems} [${qName}]...`;
+                }
 
-            updateBulkCounters();
+                // User requirement: If single video download selected, download MP4 immediately on completion of each video!
+                if (format === 'single' && item.status === 'completed' && item.taskId) {
+                    triggerSingleVideoDownload(item, q);
+                }
+
+                updateBulkCounters();
+            }
         }
+
+        const workers = [];
+        const numWorkers = Math.min(CONCURRENCY, totalItems);
+        for (let w = 0; w < numWorkers; w++) {
+            workers.push(bulkWorker());
+        }
+        await Promise.all(workers);
 
         isBulkProcessing = false;
         if (btnStopBulkBatch) {
@@ -2871,8 +2890,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function processSingleBulkItem(item, itemIdx = 0, totalItems = 1, chosenQuality = '1080') {
         if (isBulkBatchAborted) return;
         item.status = 'processing';
-        item.percent = 8;
-        updateBulkItemRow(item);
+        setMonotonicItemPercent(item, 10);
 
         try {
             let serverFilename = item.serverFilename;
@@ -2920,8 +2938,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            item.percent = 18;
-            updateBulkItemRow(item);
+            setMonotonicItemPercent(item, 20);
 
             // Determine video subtitle cues:
             // CRITICAL:
@@ -2980,29 +2997,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             item.percent = 100;
                             item.downloadUrl = `/api/download/${item.taskId}?quality=${chosenQuality || state.selectedQuality || '1080'}`;
                             updateBulkItemRow(item);
-                            if (bulkMasterFill) {
-                                const doneOverall = Math.round(((itemIdx + 1) / totalItems) * 100);
-                                bulkMasterFill.style.width = `${doneOverall}%`;
-                            }
                             resolve();
                         } else if (statusData.status === 'error') {
                             clearInterval(pollTimer);
                             throw new Error(statusData.error || 'Watermark removal failed');
                         } else {
                             const rawPct = statusData.percent || 0;
-                            item.percent = Math.max(18, Math.min(98, Math.round(18 + (rawPct * 0.8))));
-
-                            // Advances global master progress line proportionally without resetting to 0!
-                            const currentOverall = Math.min(99, Math.round(((itemIdx + (rawPct / 100)) / totalItems) * 100));
-                            if (bulkMasterFill) bulkMasterFill.style.width = `${currentOverall}%`;
-
-                            updateBulkItemRow(item);
+                            setMonotonicItemPercent(item, 20 + (rawPct * 0.79));
                         }
                     } catch (err) {
                         clearInterval(pollTimer);
                         reject(err);
                     }
-                }, 400);
+                }, 350);
             });
 
         } catch (err) {
@@ -3550,8 +3557,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async function processBatchItem(item, i) {
             if (isBulkBatchAborted) return;
             item.status = 'processing';
-            item.percent = 15;
-            updateBulkItemRow(item);
+            setMonotonicItemPercent(item, 10);
 
             if (bulkSummaryTitle) {
                 bulkSummaryTitle.textContent = `Processing Video ${i + 1} of ${totalItems}: ${item.name} [${qName}]...`;
@@ -3595,8 +3601,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                item.percent = 30;
-                updateBulkItemRow(item);
+                setMonotonicItemPercent(item, 20);
 
                 // 2. Determine per-video cues:
                 let videoCues = [];
@@ -3678,8 +3683,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 reject(new Error(statusData.error || 'Render failed'));
                             } else {
                                 const itemPct = statusData.percent || 0;
-                                item.percent = Math.max(25, Math.min(99, Math.round(25 + (itemPct * 0.74))));
-                                updateBulkItemRow(item);
+                                setMonotonicItemPercent(item, 20 + (itemPct * 0.79));
                             }
                         } catch (e) {
                             clearInterval(pollInterval);
