@@ -178,10 +178,19 @@ def transcribe_video_speech(video_path, model_size="base"):
         except Exception:
             pass
 
-        # Extract clean 16kHz mono PCM WAV for Whisper decoding
+        # Extract clean 16kHz mono PCM WAV with dynamic audio normalization
+        # dynaudnorm boosts quiet baby/child vocalizations while keeping adult speech balanced
         temp_dir = tempfile.gettempdir()
         wav_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
-        cmd = [FFMPEG_EXE, "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wav_path]
+        cmd = [
+            FFMPEG_EXE, "-y", "-i", video_path,
+            "-vn",
+            "-af", "dynaudnorm=f=75:g=15:m=10.0:p=0.9",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            wav_path
+        ]
         sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # If WAV does not exist or has no audio, return immediately
@@ -194,19 +203,24 @@ def transcribe_video_speech(video_path, model_size="base"):
                 "message": "No valid audio track found in video."
             }
 
-        # High-accuracy VAD parameters: strictly filters out music, background noise, and silence
+        # Multi-speaker sensitive VAD parameters: captures both soft baby words and adult voices
         segments, info = model.transcribe(
             wav_path,
-            beam_size=2,
+            beam_size=3,
+            best_of=2,
             temperature=0.0,
             vad_filter=True,
             vad_parameters=dict(
-                min_silence_duration_ms=400,
-                threshold=0.45
+                threshold=0.20,              # Low threshold captures high-pitch baby words & soft speech
+                min_speech_duration_ms=100,  # Captures short baby words/expressions
+                min_silence_duration_ms=300, # Clean boundaries between words
+                speech_pad_ms=250            # Ample padding around speech
             ),
             condition_on_previous_text=False,
             word_timestamps=True,
-            no_speech_threshold=0.6,
+            no_speech_threshold=0.35,
+            log_prob_threshold=-1.5,
+            compression_ratio_threshold=2.8,
             repetition_penalty=1.2,
             hallucination_silence_threshold=2.0
         )

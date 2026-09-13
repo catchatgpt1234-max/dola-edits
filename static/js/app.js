@@ -238,9 +238,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
             uploadStatFileSize.textContent = `${sizeMb} MB`;
         }
-        // Direct Upload: Never show blocking popup modal in any mode!
-        if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
-        if (dropzone) dropzone.classList.add('is-direct-uploading');
+        // In-Place Upload Card with Live Timer & Progress Ring (as requested by user)
+        if (uploadStatTime) uploadStatTime.textContent = '00:00';
+        if (uploadModalTitle) uploadModalTitle.textContent = 'Uploading Video...';
+        setUploadProgress(0, 'Sending video to Dola Edits engine...', '⚡ Uploading...');
+
+        if (uploadCard) uploadCard.classList.add('hidden');
+        if (uploadProgressModal) uploadProgressModal.classList.remove('hidden');
+
+        const uploadStartTime = Date.now();
+        if (uploadTimerInterval) clearInterval(uploadTimerInterval);
+        uploadTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - uploadStartTime) / 1000);
+            if (uploadStatTime) uploadStatTime.textContent = formatTimeSec(elapsed);
+        }, 1000);
 
         const formData = new FormData();
         formData.append('video', file);
@@ -248,16 +259,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
 
-        // Real upload progress directly without popup modal
+        // Real upload progress with percentage and timer
         xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable && dropzone) {
+            if (e.lengthComputable) {
                 const uploadPct = Math.min(99, Math.round((e.loaded / e.total) * 100));
-                dropzone.setAttribute('data-upload-pct', `${uploadPct}%`);
+                setUploadProgress(uploadPct, `Uploading video (${uploadPct}%)...`, '⚡ Uploading...');
             }
         };
 
+        xhr.upload.onload = () => {
+            setUploadProgress(100, 'Finishing & Opening Studio...', '🎉 Complete!');
+        };
+
         xhr.onload = () => {
-            if (dropzone) dropzone.classList.remove('is-direct-uploading');
             if (uploadTimerInterval) clearInterval(uploadTimerInterval);
             if (uploadAnalysisInterval) clearInterval(uploadAnalysisInterval);
 
