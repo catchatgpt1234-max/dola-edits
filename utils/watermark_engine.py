@@ -122,6 +122,41 @@ CAPTION_STYLES = {
         "id": "glass",
         "label": "Glass Bar",
         "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x121622@0.65:boxborderw={max(4, round(p * 0.22))}"
+    },
+    "aliabdaal": {
+        "id": "aliabdaal",
+        "label": "Ali Abdaal Clean",
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.68:boxborderw={max(5, round(p * 0.24))}"
+    },
+    "devinjatho": {
+        "id": "devinjatho",
+        "label": "Devin Jatho Impact",
+        "dt": lambda border_w, p: f"fontcolor=0xFFE600:box=1:boxcolor=black@0.85:boxborderw={max(5, round(p * 0.26))}:borderw={max(1, border_w-1)}:bordercolor=black"
+    },
+    "karaoke": {
+        "id": "karaoke",
+        "label": "Karaoke Pop",
+        "dt": lambda border_w, p: f"fontcolor=0x80FF20:borderw={border_w + 2}:bordercolor=black:shadowcolor=0xFFD700@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+    },
+    "cinematic": {
+        "id": "cinematic",
+        "label": "Cinematic Clean",
+        "dt": lambda border_w, p: f"fontcolor=0xF5F5F7:borderw=1:bordercolor=black@0.80:shadowcolor=black@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+    },
+    "synthwave": {
+        "id": "synthwave",
+        "label": "Synthwave Purple",
+        "dt": lambda border_w, p: f"fontcolor=0x9933FF:borderw={border_w + 2}:bordercolor=black:shadowcolor=0xFF007F@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+    },
+    "frost": {
+        "id": "frost",
+        "label": "Icy Frost",
+        "dt": lambda border_w, p: f"fontcolor=0xD0FFFF:borderw={border_w + 2}:bordercolor=black:shadowcolor=0x002288@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+    },
+    "velvet": {
+        "id": "velvet",
+        "label": "Ruby Velvet",
+        "dt": lambda border_w, p: f"fontcolor=0xE62222:borderw={border_w + 2}:bordercolor=black:shadowcolor=black@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
     }
 }
 
@@ -203,6 +238,13 @@ def create_ass_subtitles_file(captions, width, height, style_name="classic", siz
         "neon": {"prim": "&H00CCFF00", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 2, "shdw": 1},
         "boxed": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H80000000", "border": 3, "outw": border_w + 2, "shdw": 0},
         "glass": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&HB0121622", "border": 3, "outw": border_w + 2, "shdw": 0},
+        "aliabdaal": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&HB0141414", "border": 3, "outw": border_w + 2, "shdw": 0},
+        "devinjatho": {"prim": "&H0000E6FF", "outl": "&H00000000", "back": "&HD0050505", "border": 3, "outw": border_w + 3, "shdw": 0},
+        "karaoke": {"prim": "&H0020FF80", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 3, "shdw": 3},
+        "cinematic": {"prim": "&H00F7F5F5", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(1, border_w - 1), "shdw": 2},
+        "synthwave": {"prim": "&H00FF3399", "outl": "&H00000000", "back": "&H807F00FF", "border": 1, "outw": border_w + 2, "shdw": 3},
+        "frost": {"prim": "&H00FFFFD0", "outl": "&H00000000", "back": "&H80882200", "border": 1, "outw": border_w + 3, "shdw": 3},
+        "velvet": {"prim": "&H002222E6", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 2, "shdw": 2},
     }
     st = ASS_STYLE_MAP.get(style_name, ASS_STYLE_MAP["classic"])
 

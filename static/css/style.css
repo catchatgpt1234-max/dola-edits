@@ -3049,6 +3049,84 @@ body.studio-view-active .features-section,
     box-shadow: 0 6px 22px rgba(0,0,0,0.45);
 }
 
+/* Preset: Ali Abdaal Clean */
+.live-caption-overlay[data-style="aliabdaal"] .caption-text-box {
+    color: #ffffff;
+    background: rgba(15, 15, 18, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 6px 14px;
+    border-radius: 8px;
+    letter-spacing: 0.02em;
+}
+
+/* Preset: Devin Jatho Impact */
+.live-caption-overlay[data-style="devinjatho"] .caption-text-box {
+    color: #ffe600;
+    background: rgba(0, 0, 0, 0.88);
+    border: 1px solid rgba(255, 230, 0, 0.4);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: 900;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+/* Preset: Karaoke Pop */
+.live-caption-overlay[data-style="karaoke"] .caption-text-box {
+    color: #80ff20;
+    text-shadow: 
+        -2px -2px 0 #000,  
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+         0 3px 6px rgba(255, 215, 0, 0.85);
+}
+
+/* Preset: Cinematic Clean */
+.live-caption-overlay[data-style="cinematic"] .caption-text-box {
+    color: #f7f5f5;
+    text-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.9),
+        0 2px 8px rgba(0, 0, 0, 0.75);
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+/* Preset: Synthwave Purple */
+.live-caption-overlay[data-style="synthwave"] .caption-text-box {
+    color: #9933ff;
+    text-shadow: 
+        -2px -2px 0 #000,  
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+         0 0 12px rgba(255, 0, 128, 0.85),
+         0 0 20px rgba(153, 51, 255, 0.6);
+}
+
+/* Preset: Icy Frost */
+.live-caption-overlay[data-style="frost"] .caption-text-box {
+    color: #d0ffff;
+    text-shadow: 
+        -2px -2px 0 #000,  
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+         0 3px 8px rgba(0, 34, 136, 0.95);
+}
+
+/* Preset: Ruby Velvet */
+.live-caption-overlay[data-style="velvet"] .caption-text-box {
+    color: #e62222;
+    text-shadow: 
+        -2px -2px 0 #000,  
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+         0 2px 6px rgba(0, 0, 0, 0.9);
+}
+
 /* ==========================================================================
    CAPTION STUDIO PANEL
    ========================================================================== */
@@ -3278,6 +3356,49 @@ body.studio-view-active .features-section,
     color: #ffffff;
     backdrop-filter: blur(4px);
     border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.style-aliabdaal-icon {
+    background: #111114;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.style-devinjatho-icon {
+    background: #000000;
+    color: #ffe600;
+    border: 1px solid #ffe600;
+    font-weight: 900;
+}
+
+.style-karaoke-icon {
+    background: #0d2b00;
+    color: #80ff20;
+    border: 1px solid #80ff20;
+}
+
+.style-cinematic-icon {
+    background: #141416;
+    color: #f7f5f5;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.style-synthwave-icon {
+    background: #1a0026;
+    color: #9933ff;
+    border: 1px solid #ff007f;
+}
+
+.style-frost-icon {
+    background: #001824;
+    color: #d0ffff;
+    border: 1px solid #00aaff;
+}
+
+.style-velvet-icon {
+    background: #240004;
+    color: #e62222;
+    border: 1px solid #e62222;
 }
 
 /* Size Segmented Buttons */
