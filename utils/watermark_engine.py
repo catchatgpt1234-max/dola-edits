@@ -29,15 +29,28 @@ def get_ffmpeg_binary():
         local_bin = os.path.join(base_dir, "bin", "ffmpeg")
         os.makedirs(os.path.join(base_dir, "bin"), exist_ok=True)
         if not os.path.exists(local_bin) or os.path.getsize(local_bin) < 100000:
-            print("⏳ Downloading full static Linux FFmpeg with drawtext...")
+            print("⏳ Downloading BtbN FFmpeg GPL static build (libass + drawtext + freetype)...")
             try:
                 import urllib.request
+                import tarfile
+                tar_path = os.path.join(base_dir, "bin", "ffmpeg-build.tar.xz")
                 urllib.request.urlretrieve(
-                    "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64",
-                    local_bin
+                    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+                    tar_path
                 )
+                # Extract only the ffmpeg binary
+                with tarfile.open(tar_path, "r:xz") as tf:
+                    for member in tf.getmembers():
+                        if member.name.endswith("/bin/ffmpeg") and not member.name.endswith("/bin/ffmpeg.exe"):
+                            member.name = "ffmpeg"
+                            tf.extract(member, os.path.join(base_dir, "bin"))
+                            break
                 os.chmod(local_bin, 0o755)
+                # Clean up tar
+                if os.path.exists(tar_path):
+                    os.remove(tar_path)
                 if os.path.exists(local_bin) and os.path.getsize(local_bin) > 1000000:
+                    print(f"✅ FFmpeg downloaded successfully ({os.path.getsize(local_bin) // (1024*1024)} MB)")
                     return local_bin
             except Exception as de:
                 print("FFmpeg download error:", de)
