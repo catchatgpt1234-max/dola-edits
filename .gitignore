@@ -1,27 +1,8 @@
-﻿__pycache__/
-*.py[cod]
-*.class
-*.so
-.Python
-env/
-venv/
-.venv/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Media folders
-temp/
-uploads/
-outputs/
-*.mp4
-*.zip
-*.avi
-*.mov
-*.webm
-
-# System
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+.env
+.env.local
+*.key
+key.txt
+groq_key.txt
+__pycache__/
+*.pyc
+bin/

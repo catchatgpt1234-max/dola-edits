@@ -138,12 +138,92 @@ def _extract_words_from_segments(segments_list):
                 })
     return all_words
 
+def get_groq_api_key():
+    """Retrieves Groq API key from environment or local git-ignored config file."""
+    env_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    key_file = os.path.join(os.path.dirname(__file__), "..", "groq_key.txt")
+    if os.path.exists(key_file):
+        try:
+            with open(key_file, "r", encoding="utf-8") as f:
+                k = f.read().strip()
+                if k.startswith("gsk_"):
+                    return k
+        except Exception:
+            pass
+    return ""
+
+GROQ_API_KEY = get_groq_api_key()
+
+def _transcribe_with_groq(audio_path, api_key=None):
+    """
+    Calls Groq Cloud Whisper API (whisper-large-v3) for ultra-fast, high-precision speech transcription.
+    Returns (all_words, detected_language) or raises an exception.
+    """
+    key = api_key or GROQ_API_KEY
+    if not key:
+        raise ValueError("Groq API key not provided.")
+
+    import requests
+    url = "https://api.groq.com/openai/v1/audio/transcriptions"
+    headers = {
+        "Authorization": f"Bearer {key}"
+    }
+    
+    with open(audio_path, "rb") as f:
+        files = {
+            "file": (os.path.basename(audio_path), f, "audio/mpeg" if audio_path.endswith(".mp3") else "audio/wav")
+        }
+        data = {
+            "model": "whisper-large-v3",
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": "word",
+            "temperature": "0.0"
+        }
+        resp = requests.post(url, headers=headers, files=files, data=data, timeout=45)
+        
+    if resp.status_code != 200:
+        raise RuntimeError(f"Groq API error ({resp.status_code}): {resp.text}")
+
+    result = resp.json()
+    detected_lang = result.get("language")
+    
+    all_words = []
+    # Groq returns 'words' list when timestamp_granularities[] is word
+    raw_words = result.get("words", [])
+    if raw_words:
+        for w in raw_words:
+            word_str = str(w.get("word", "")).strip()
+            if not word_str:
+                continue
+            all_words.append({
+                "start": round(float(w.get("start", 0)), 2),
+                "end": round(float(w.get("end", 0)), 2),
+                "word": word_str
+            })
+    elif result.get("segments"):
+        # Fallback to segments if words is empty
+        for seg in result["segments"]:
+            words = str(seg.get("text", "")).strip().split()
+            seg_start = float(seg.get("start", 0))
+            seg_end = float(seg.get("end", 0))
+            seg_dur = max(0.4, seg_end - seg_start)
+            w_dur = seg_dur / max(1, len(words))
+            for idx, w in enumerate(words):
+                all_words.append({
+                    "start": round(seg_start + idx * w_dur, 2),
+                    "end": round(seg_start + (idx + 1) * w_dur, 2),
+                    "word": w
+                })
+
+    return all_words, detected_lang
+
 def transcribe_video_speech(video_path, model_size="base"):
     """
     High-Precision AI Speech Transcription:
-    Extracts 16kHz mono WAV and runs Whisper 'base' model with Silero VAD.
-    - Silero VAD strictly isolates real human voice, completely eliminating hallucinations from background music/noise.
-    - Temperature 0.0 + repetition_penalty ensure 100% genuine verbatim words matching speaker voice.
+    1. Primary: Groq Cloud Whisper Large V3 (ultra-fast 0.5s response, 0% server CPU/RAM load).
+    2. Fallback: Local faster-whisper model on CPU.
     """
     if not os.path.exists(video_path):
         return {
@@ -154,17 +234,7 @@ def transcribe_video_speech(video_path, model_size="base"):
             "message": "Video file not found."
         }
 
-    model = get_whisper_model(model_size)
-    if model is None:
-        return {
-            "has_speech": False,
-            "language": None,
-            "cues": [],
-            "formatted_text": "",
-            "message": "Speech recognition engine could not be initialized."
-        }
-
-    wav_path = None
+    audio_path = None
     try:
         vid_duration = 10.0
         try:
@@ -178,54 +248,74 @@ def transcribe_video_speech(video_path, model_size="base"):
         except Exception:
             pass
 
-        # Extract clean 16kHz mono PCM WAV with dynamic audio normalization
-        # dynaudnorm boosts quiet baby/child vocalizations while keeping adult speech balanced
         temp_dir = tempfile.gettempdir()
-        wav_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
+        audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.mp3")
+        
+        # Extract clean audio with dynamic audio normalization (dynaudnorm)
         cmd = [
             FFMPEG_EXE, "-y", "-i", video_path,
             "-vn",
             "-af", "dynaudnorm=f=75:g=15:m=10.0:p=0.9",
-            "-acodec", "pcm_s16le",
+            "-c:a", "libmp3lame",
+            "-b:a", "64k",
             "-ar", "16000",
             "-ac", "1",
-            wav_path
+            audio_path
         ]
         sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        # If WAV does not exist or has no audio, return immediately
-        if not (sub.returncode == 0 and os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000):
-            return {
-                "has_speech": False,
-                "language": None,
-                "cues": [],
-                "formatted_text": "",
-                "message": "No valid audio track found in video."
-            }
+        if not (sub.returncode == 0 and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000):
+            # Fallback to WAV extraction if mp3 encoding fails
+            audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
+            cmd_wav = [
+                FFMPEG_EXE, "-y", "-i", video_path,
+                "-vn",
+                "-af", "dynaudnorm=f=75:g=15:m=10.0:p=0.9",
+                "-acodec", "pcm_s16le",
+                "-ar", "16000",
+                "-ac", "1",
+                audio_path
+            ]
+            sub_wav = subprocess.run(cmd_wav, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if not (sub_wav.returncode == 0 and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000):
+                return {
+                    "has_speech": False,
+                    "language": None,
+                    "cues": [],
+                    "formatted_text": "",
+                    "message": "No valid audio track found in video."
+                }
 
-        # Multi-speaker sensitive VAD parameters: captures both soft baby words and adult voices
-        segments, info = model.transcribe(
-            wav_path,
-            beam_size=3,
-            best_of=2,
-            temperature=0.0,
-            vad_filter=True,
-            vad_parameters=dict(
-                threshold=0.20,              # Low threshold captures high-pitch baby words & soft speech
-                min_speech_duration_ms=100,  # Captures short baby words/expressions
-                min_silence_duration_ms=300, # Clean boundaries between words
-                speech_pad_ms=250            # Ample padding around speech
-            ),
-            condition_on_previous_text=False,
-            word_timestamps=True,
-            no_speech_threshold=0.35,
-            log_prob_threshold=-1.5,
-            compression_ratio_threshold=2.8,
-            repetition_penalty=1.2,
-            hallucination_silence_threshold=2.0
-        )
-        segments_list = list(segments)
-        all_words = _extract_words_from_segments(segments_list)
+        all_words = []
+        detected_lang = None
+
+        # Try Groq Cloud Whisper API first (Ultra-fast, 0% CPU)
+        try:
+            logger.info("Transcribing audio via Groq Cloud Whisper Large V3...")
+            all_words, detected_lang = _transcribe_with_groq(audio_path)
+            logger.info(f"Groq transcription completed: {len(all_words)} words, language={detected_lang}")
+        except Exception as ge:
+            logger.warning(f"Groq Cloud API unavailable ({ge}), falling back to local faster-whisper...")
+            model = get_whisper_model(model_size)
+            if model is not None:
+                segments, info = model.transcribe(
+                    audio_path,
+                    beam_size=3,
+                    best_of=2,
+                    temperature=0.0,
+                    vad_filter=True,
+                    vad_parameters=dict(
+                        threshold=0.20,
+                        min_speech_duration_ms=100,
+                        min_silence_duration_ms=300,
+                        speech_pad_ms=250
+                    ),
+                    condition_on_previous_text=False,
+                    word_timestamps=True,
+                    repetition_penalty=1.2
+                )
+                all_words = _extract_words_from_segments(list(segments))
+                detected_lang = getattr(info, "language", None)
 
         # Filter out repeated words or out-of-range timestamps
         filtered_words = []
@@ -264,7 +354,6 @@ def transcribe_video_speech(video_path, model_size="base"):
 
         has_speech = len(cues) > 0
         formatted_text = "\n".join(formatted_lines)
-        detected_lang = getattr(info, "language", None) if (info and has_speech) else None
 
         return {
             "has_speech": has_speech,
@@ -283,8 +372,8 @@ def transcribe_video_speech(video_path, model_size="base"):
             "message": f"Transcription error: {str(e)}"
         }
     finally:
-        if wav_path and os.path.exists(wav_path):
+        if audio_path and os.path.exists(audio_path):
             try:
-                os.remove(wav_path)
+                os.remove(audio_path)
             except Exception:
                 pass
