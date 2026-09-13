@@ -2812,7 +2812,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const totalItems = pendingItems.length;
         let completedCount = 0;
-        const CONCURRENCY = 2;
+        const CONCURRENCY = 3;
         let queueIdx = 0;
 
         async function bulkWorker() {
@@ -3009,7 +3009,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         clearInterval(pollTimer);
                         reject(err);
                     }
-                }, 350);
+                }, 250);
             });
 
         } catch (err) {
@@ -3689,7 +3689,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             clearInterval(pollInterval);
                             reject(e);
                         }
-                    }, 350);
+                    }, 250);
                 });
             } catch (err) {
                 console.error(`Error processing batch video ${i + 1}:`, err);
@@ -3698,8 +3698,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Parallel Concurrent Worker Pool (processes 2 videos simultaneously for 2x speed)
-        const CONCURRENCY = 2;
+        // Parallel Concurrent Worker Pool (processes 3 videos simultaneously for maximum speed)
+        const CONCURRENCY = 3;
         let queueIdx = 0;
 
         async function worker() {

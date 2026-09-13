@@ -160,6 +160,31 @@ body {
     border-color: var(--primary);
     background: rgba(0, 242, 254, 0.06);
 }
+.coffee-badge {
+    text-decoration: none;
+    cursor: pointer;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(239, 68, 68, 0.09));
+    border: 1px solid rgba(245, 158, 11, 0.38);
+    color: #fef08a !important;
+    font-weight: 600;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.coffee-badge:hover {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(239, 68, 68, 0.20));
+    border-color: #f59e0b;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+}
+.coffee-icon {
+    font-size: 1.05rem;
+    display: inline-block;
+    animation: coffeeSway 2.5s ease-in-out infinite;
+}
+@keyframes coffeeSway {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(10deg); }
+}
 .dev-pulse {
     width: 8px;
     height: 8px;
