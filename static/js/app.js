@@ -1065,21 +1065,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let activeCue = captionState.cues.find(c => currentTime >= c.start && currentTime <= c.end);
-        // When video is paused, show the nearest cue ONLY if we are very close to it (within 1 second)
-        // This prevents showing wrong captions that don't match the visible frame's audio
+        // When video is paused, show nearest cue or first cue so user can see and preview subtitle style in display!
         if (!activeCue && targetVideo.paused && captionState.cues.length > 0) {
             const nearestFuture = captionState.cues.find(c => c.start >= currentTime);
             const nearestPast = [...captionState.cues].reverse().find(c => c.end <= currentTime);
-            // Show future cue only if it starts within 1 second
-            if (nearestFuture && (nearestFuture.start - currentTime) < 1.0) {
+            if (nearestFuture && (nearestFuture.start - currentTime) < 2.0) {
                 activeCue = nearestFuture;
-            }
-            // Or show past cue if it ended within 0.5 seconds ago
-            else if (nearestPast && (currentTime - nearestPast.end) < 0.5) {
+            } else if (nearestPast && (currentTime - nearestPast.end) < 1.5) {
                 activeCue = nearestPast;
-            }
-            // At time 0 (just loaded), show first cue as preview
-            else if (currentTime < 0.3) {
+            } else if (nearestFuture) {
+                activeCue = nearestFuture;
+            } else if (nearestPast) {
+                activeCue = nearestPast;
+            } else {
                 activeCue = captionState.cues[0];
             }
         }
@@ -3236,7 +3234,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
                 updateLiveSubtitleOverlay(0);
             }
+            const trOverlay = document.getElementById('transcribeBufferingOverlay');
+            if (trOverlay) trOverlay.classList.add('hidden');
             return;
+        }
+
+        const trOverlay = document.getElementById('transcribeBufferingOverlay');
+        if (trOverlay) trOverlay.classList.remove('hidden');
+
+        // Check if item already has serverFilename from background queue
+        if (item.serverFilename) {
+            try {
+                const trRes = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: item.serverFilename })
+                });
+                const trData = await trRes.json();
+                if (trData.success) {
+                    item.transcription = trData;
+                    if (trData.has_speech && trData.cues && trData.cues.length > 0) {
+                        captionState.cues = trData.cues;
+                        renderCuesList();
+                        if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+                        updateLiveSubtitleOverlay(sourceVideo ? (sourceVideo.currentTime || 0) : 0);
+                    }
+                    if (trOverlay) trOverlay.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {
+                console.warn('Transcribe fetch notice:', e);
+            }
         }
 
         // 3. Not yet transcribed: Show REAL buffering indicator while Whisper processes!
@@ -3259,6 +3287,7 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('skip_preclean', 'true');
             const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
             const upData = await upRes.json();
+            if (trOverlay) trOverlay.classList.add('hidden');
             if (upData.success) {
                 item.serverFilename = upData.filename;
                 item.cleanVideoUrl = upData.clean_video_url;
@@ -3460,6 +3489,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentItem.customCues = activeCues;
                 currentItem.hasUserEditedSubtitles = true;
                 currentItem.customFormattedText = userTypedText;
+            } else if (captionState.cues && captionState.cues.length > 0) {
+                if (!currentItem.transcription || !currentItem.transcription.cues || currentItem.transcription.cues.length === 0) {
+                    currentItem.transcription = { has_speech: true, cues: captionState.cues };
+                }
+                currentItem.hasUserEditedSubtitles = false;
             } else if (currentItem.transcription && currentItem.transcription.has_speech) {
                 currentItem.hasUserEditedSubtitles = false;
             } else {

@@ -97,10 +97,13 @@ def upload_video():
         auto_bbox = auto_detect_dola_watermark(save_path, meta)
 
         clean_name = f"dolaedits_clean_{unique_name.rsplit('.', 1)[0]}.mp4"
-        clean_path = os.path.join(OUTPUT_DIR, clean_name)
-        clean_video_url = None
-
         transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
+        skip_transcription = (request.form.get("skip_transcription") == "true") or (request.headers.get("X-Skip-Transcription") == "true")
+        if not skip_transcription and meta.get("has_audio"):
+            try:
+                transcription = transcribe_video_speech(save_path)
+            except Exception as te:
+                print(f"Speech transcription warning on upload: {te}")
 
         return jsonify({
             "success": True,
