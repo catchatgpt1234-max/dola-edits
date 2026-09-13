@@ -686,7 +686,10 @@ def process_video(
                 crop_window_h -= 1
             crop_x = max(0, (width - crop_window_w) // 2)
             crop_y = 0
-            wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=fast_bilinear,setsar=1"
+            if q_str in ("original", "source") and not add_captions:
+                wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},setsar=1"
+            else:
+                wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=fast_bilinear,setsar=1"
 
         # Build caption filter using high-speed ASS subtitles (runs at 80+ fps vs 0.8 fps drawtext)
         cap_filter = ""
@@ -731,8 +734,8 @@ def process_video(
         else:
             vf_filter = "null"
 
-        # Encoder selection: check NVENC support or use multithreaded ultrafast libx264
-        v_codec_args = ["-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-tune", "fastdecode", "-pix_fmt", "yuv420p"]
+        # Encoder selection: check NVENC support or use multithreaded ultrafast zerolatency libx264
+        v_codec_args = ["-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0", "-crf", "23", "-pix_fmt", "yuv420p"]
         if getattr(process_video, "_nvenc_supported", None) is None:
             try:
                 chk = subprocess.run([FFMPEG_EXE, "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.05", "-c:v", "h264_nvenc", "-f", "null", "-"], capture_output=True)

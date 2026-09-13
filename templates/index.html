@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=76.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=80.0">
 </head>
 <body>
     <!-- Background glowing ambient spheres -->
@@ -113,7 +113,7 @@
         <!-- In-Place Upload & AI Analysis Progress Card (Replaces popup modal so it displays cleanly in-place under Single/Bulk mode) -->
         <section class="card upload-progress-card hidden" id="uploadProgressModal">
             <div class="upload-progress-inner">
-                <div class="modal-spinner-wrapper">
+                <div class="modal-spinner-wrapper" style="margin-bottom: 0;">
                     <div class="circular-progress">
                         <svg viewBox="0 0 100 100">
                             <defs>
@@ -127,27 +127,6 @@
                         </svg>
                         <div class="percentage-text" id="uploadProgressPercent">0%</div>
                     </div>
-                </div>
-
-
-
-                <div class="stats-grid upload-stats-grid">
-                    <div class="stat-box">
-                        <span class="stat-label">File Name</span>
-                        <span class="stat-val stat-val-truncate" id="uploadStatFileName">video.mp4</span>
-                    </div>
-                    <div class="stat-box">
-                        <span class="stat-label">File Size</span>
-                        <span class="stat-val" id="uploadStatFileSize">0 MB</span>
-                    </div>
-                    <div class="stat-box">
-                        <span class="stat-label">Time Elapsed</span>
-                        <span class="stat-val stat-val-cyan" id="uploadStatTime">00:00</span>
-                    </div>
-                </div>
-
-                <div class="linear-progress-bar">
-                    <div class="linear-progress-fill" id="uploadLinearFill"></div>
                 </div>
             </div>
         </section>
@@ -1267,6 +1246,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=78.0"></script>
+    <script src="/static/js/app.js?v=80.0"></script>
 </body>
 </html>
