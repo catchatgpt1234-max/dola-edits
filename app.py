@@ -44,7 +44,6 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 TASKS = {}
-PRECLEAN_TASKS = {}  # filename -> {"event": threading.Event(), "created_at": time.time()}
 TASK_CLEANUP_SECONDS = 1800  # Auto-cleanup completed tasks after 30 minutes
 
 @app.errorhandler(Exception)
@@ -65,11 +64,6 @@ def cleanup_old_tasks():
                and t.get("created_at", now) < now - TASK_CLEANUP_SECONDS]
     for tid in expired:
         del TASKS[tid]
-    
-    expired_pre = [fn for fn, p in PRECLEAN_TASKS.items()
-                   if p.get("created_at", now) < now - TASK_CLEANUP_SECONDS]
-    for fn in expired_pre:
-        del PRECLEAN_TASKS[fn]
 
     if expired:
         print(f"🧹 Cleaned up {len(expired)} old task(s) from memory.")
@@ -102,32 +96,9 @@ def upload_video():
         meta = get_video_metadata(save_path)
         auto_bbox = auto_detect_dola_watermark(save_path, meta)
 
-        # Background Pre-Clean Watermark:
-        # Pre-removes the watermark in the background while user reviews the studio / captions.
-        # When user clicks download, watermark is already gone!
         clean_name = f"dolaedits_clean_{unique_name.rsplit('.', 1)[0]}.mp4"
         clean_path = os.path.join(OUTPUT_DIR, clean_name)
-        clean_video_url = f"/api/media/outputs/{clean_name}"
-
-        clean_event = threading.Event()
-        PRECLEAN_TASKS[unique_name] = {"event": clean_event, "created_at": time.time()}
-
-        def bg_preclean_worker(raw_p, out_p, bbox_d, evt):
-            try:
-                process_video(
-                    video_path=raw_p,
-                    output_path=out_p,
-                    bbox=bbox_d,
-                    method="crop",
-                    remove_watermark=True,
-                    add_captions=False
-                )
-            except Exception as pe:
-                print("Background preclean notice:", pe)
-            finally:
-                evt.set()
-
-        threading.Thread(target=bg_preclean_worker, args=(save_path, clean_path, auto_bbox, clean_event), daemon=True).start()
+        clean_video_url = None
 
         transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
 
@@ -136,8 +107,8 @@ def upload_video():
             "filename": unique_name,
             "original_name": file.filename,
             "video_url": f"/api/media/uploads/{unique_name}",
-            "clean_filename": clean_name,
-            "clean_video_url": clean_video_url,
+            "clean_filename": None,
+            "clean_video_url": None,
             "metadata": meta,
             "auto_bbox": auto_bbox,
             "transcription": transcription
@@ -287,47 +258,15 @@ def start_processing():
                 TASKS[task_id]["eta"] = eta
 
             try:
-                # Check if watermark preclean is already completed or running in the background
-                clean_name = f"dolaedits_clean_{filename.rsplit('.', 1)[0]}.mp4"
-                clean_path = os.path.join(OUTPUT_DIR, clean_name)
-
-                preclean_info = PRECLEAN_TASKS.get(filename)
-                if preclean_info:
-                    evt = preclean_info.get("event")
-                    if evt and not evt.is_set():
-                        # Wait up to 15 seconds for background precleaning to complete
-                        evt.wait(timeout=15.0)
-
-                has_clean_preclean = os.path.exists(clean_path) and os.path.getsize(clean_path) > 1000
-
-                if remove_watermark and has_clean_preclean:
-                    # Watermark was ALREADY cleaned in the background while user reviewed captions!
-                    src_video = clean_path
-                    effective_remove_wm = False  # Avoid double-crop!
-                else:
-                    src_video = video_path
-                    effective_remove_wm = remove_watermark
-
-                # Instant finish: Watermark already removed, NO captions requested, and native quality (original/1080p)
-                if remove_watermark and has_clean_preclean and not add_captions and q_label in ("original", "source", "1080p"):
-                    import shutil
-                    shutil.copyfile(clean_path, output_path)
-                    TASKS[task_id]["percent"] = 100
-                    TASKS[task_id]["fps"] = 999.0
-                    TASKS[task_id]["eta"] = 0.0
-                    TASKS[task_id]["status"] = "completed"
-                    return
-
-                # High-speed single-pass rendering:
-                # If watermark is already clean, it ONLY applies quality enhancement and/or ASS subtitles (80+ fps!)
+                # High-speed single-pass rendering: directly scales, crops watermark, and burns captions in one pass
                 process_video(
-                    video_path=src_video,
+                    video_path=video_path,
                     output_path=output_path,
-                    bbox=bbox if effective_remove_wm else None,
+                    bbox=bbox,
                     method=method,
                     feather=feather,
                     progress_callback=progress_cb,
-                    remove_watermark=effective_remove_wm,
+                    remove_watermark=remove_watermark,
                     add_captions=add_captions,
                     captions=captions,
                     caption_style=caption_style,
@@ -336,6 +275,17 @@ def start_processing():
                     caption_pos_y=caption_pos_y,
                     target_quality=q_label
                 )
+
+                # Cache watermark-cleaned version if watermark was removed and no captions
+                if remove_watermark and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                    clean_name = f"dolaedits_clean_{filename.rsplit('.', 1)[0]}.mp4"
+                    clean_path = os.path.join(OUTPUT_DIR, clean_name)
+                    if not add_captions and not os.path.exists(clean_path):
+                        import shutil
+                        try:
+                            shutil.copyfile(output_path, clean_path)
+                        except Exception:
+                            pass
 
                 TASKS[task_id]["status"] = "completed"
                 TASKS[task_id]["percent"] = 100
@@ -412,12 +362,6 @@ def download_cleaned(task_id):
 
 @app.route("/api/download-clean/<filename>", methods=["GET"])
 def download_clean_file(filename):
-    preclean_info = PRECLEAN_TASKS.get(filename)
-    if preclean_info:
-        evt = preclean_info.get("event")
-        if evt and not evt.is_set():
-            evt.wait(timeout=15.0)
-
     if not filename.startswith("dolaedits_clean_"):
         clean_name = f"dolaedits_clean_{filename.rsplit('.', 1)[0]}.mp4"
     else:

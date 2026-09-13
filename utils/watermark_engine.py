@@ -690,7 +690,7 @@ def process_video(
         ]
 
         if has_audio:
-            cmd.extend(["-c:a", "copy"])
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
         else:
             cmd.extend(["-an"])
 
@@ -700,12 +700,13 @@ def process_video(
             output_path
         ])
 
+        output_lines = []
         start_time = time.time()
         try:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
                 text=True,
                 errors="ignore",
                 bufsize=1
@@ -714,6 +715,12 @@ def process_video(
             fps_val = 0.0
             for line in proc.stdout:
                 line = line.strip()
+                if not line:
+                    continue
+                output_lines.append(line)
+                if len(output_lines) > 50:
+                    output_lines.pop(0)
+
                 if line.startswith("fps="):
                     try:
                         fps_val = float(line.split("=")[1].strip())
@@ -733,25 +740,46 @@ def process_video(
 
             proc.wait()
 
-            # If primary encode failed
+            # If primary encode failed, analyze output and execute safe fallbacks
             if proc.returncode != 0:
                 recent_err = "\n".join(output_lines[-20:])
                 print("FFMPEG primary encode notice (returncode", proc.returncode, "): Last lines:\n", recent_err)
                 
-                # Check if drawtext was the cause of failure
-                if "drawtext" in recent_err and cap_filter:
-                    print("⚠️ 'drawtext' filter not supported in current FFmpeg build. Retrying without captions...")
-                    retry_filter = wm_filter if wm_filter else f"scale={tw}:{th}:flags=bicubic,setsar=1"
+                # Check if subtitles filter failed (e.g. libass missing on Linux)
+                dt_filter = ""
+                if add_captions and captions:
+                    try:
+                        dt_filter = build_caption_filters(
+                            captions=captions,
+                            width=tw,
+                            height=th,
+                            style_name=caption_style or "classic",
+                            size_key=caption_size or "md",
+                            line_height=caption_line_height,
+                            pos_y=caption_pos_y,
+                            temp_dir=temp_dir
+                        )
+                    except Exception as de:
+                        print("Drawtext fallback filter error:", de)
+
+                if wm_filter and dt_filter:
+                    retry_filter = f"{wm_filter},{dt_filter}"
+                elif wm_filter:
+                    retry_filter = wm_filter
+                elif dt_filter:
+                    retry_filter = f"scale={tw}:{th}:flags=bilinear,setsar=1,{dt_filter}"
                 else:
-                    retry_filter = vf_filter
+                    retry_filter = "null"
 
                 cmd_fallback = [
                     FFMPEG_EXE, "-y",
                     "-i", video_path,
                     "-vf", retry_filter,
+                    "-threads", "2",
                     "-c:v", "libx264",
                     "-preset", "ultrafast",
-                    "-crf", "18",
+                    "-crf", "20",
+                    "-tune", "fastdecode",
                     "-pix_fmt", "yuv420p"
                 ]
                 if has_audio:
@@ -762,16 +790,15 @@ def process_video(
 
                 res_fb = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 if res_fb.returncode != 0:
-                    if "drawtext" in res_fb.stdout and cap_filter and retry_filter == vf_filter:
-                        # Second fallback without captions
-                        print("⚠️ Retrying fallback without drawtext...")
-                        retry_filter = wm_filter if wm_filter else f"scale={tw}:{th}:flags=bicubic,setsar=1"
-                        cmd_fallback[4] = retry_filter
+                    # Final safety fallback: clean watermark removal without captions
+                    if wm_filter and retry_filter != wm_filter:
+                        print("⚠️ Retrying fallback without captions...")
+                        cmd_fallback[4] = wm_filter
                         res_fb2 = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                         if res_fb2.returncode != 0:
-                            raise RuntimeError(f"FFmpeg encode error: {res_fb2.stdout[-600:]}")
+                            raise RuntimeError(f"FFmpeg encode error: {res_fb2.stdout[-400:]}")
                     else:
-                        raise RuntimeError(f"FFmpeg fallback encode error: {res_fb.stdout[-600:]}")
+                        raise RuntimeError(f"FFmpeg fallback error: {res_fb.stdout[-400:]}")
 
         except Exception as e:
             raise RuntimeError(f"Error processing video: {str(e)}")
