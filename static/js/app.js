@@ -1169,7 +1169,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            const data = await resp.json();
+            let data;
+            try {
+                data = await resp.json();
+            } catch (jsonErr) {
+                const text = await resp.text().catch(() => '');
+                throw new Error(text.slice(0, 120) || `Server error (${resp.status})`);
+            }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start processing');
             }
@@ -1313,7 +1319,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            const data = await resp.json();
+            let data;
+            try {
+                data = await resp.json();
+            } catch (jsonErr) {
+                const text = await resp.text().catch(() => '');
+                throw new Error(text.slice(0, 120) || `Server error (${resp.status})`);
+            }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start watermark removal');
             }

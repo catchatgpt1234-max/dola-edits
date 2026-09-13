@@ -202,36 +202,80 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
     return ",".join(filters)
 
 def get_video_metadata(video_path):
-    """Returns metadata about the video: fps, width, height, frame_count, duration, has_audio."""
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Cannot open video file: {video_path}")
-    
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps <= 0 or np.isnan(fps):
-        fps = 30.0
-    
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = frame_count / fps if fps > 0 else 0
-    cap.release()
-
-    # Check if video has audio using ffmpeg
+    """Returns metadata about the video: fps, width, height, frame_count, duration, has_audio with FFmpeg fallback."""
+    fps = 30.0
+    width = 0
+    height = 0
+    frame_count = 0
+    duration = 0.0
     has_audio = False
+
+    # 1. Try OpenCV VideoCapture first
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            f = cap.get(cv2.CAP_PROP_FPS)
+            if f > 0 and not np.isnan(f):
+                fps = f
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if fps > 0 and frame_count > 0:
+                duration = frame_count / fps
+            cap.release()
+    except Exception as e:
+        print(f"OpenCV metadata error: {e}")
+
+    # 2. Use FFmpeg to verify / fallback for audio, resolution, duration and fps
     try:
         cmd = [FFMPEG_EXE, "-i", video_path]
         result = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, errors="ignore")
-        if "Audio:" in result.stderr:
+        stderr = result.stderr or ""
+        if "Audio:" in stderr:
             has_audio = True
+
+        dur_match = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", stderr)
+        if dur_match:
+            h, m, s = float(dur_match.group(1)), float(dur_match.group(2)), float(dur_match.group(3))
+            ffmpeg_dur = h * 3600 + m * 60 + s
+            if ffmpeg_dur > 0:
+                duration = ffmpeg_dur
+
+        if width <= 0 or height <= 0:
+            dim_match = re.search(r",\s*(\d{2,5})x(\d{2,5})", stderr)
+            if dim_match:
+                width = int(dim_match.group(1))
+                height = int(dim_match.group(2))
+
+        fps_match = re.search(r"([\d.]+)\s*fps", stderr)
+        if fps_match:
+            try:
+                parsed_fps = float(fps_match.group(1))
+                if parsed_fps > 0:
+                    fps = parsed_fps
+            except Exception:
+                pass
+
+        if frame_count <= 0 and duration > 0 and fps > 0:
+            frame_count = int(duration * fps)
     except Exception as e:
-        print(f"Error checking audio: {e}")
+        print(f"FFmpeg probe warning: {e}")
+
+    # Safe defaults to prevent crash
+    if width <= 0:
+        width = 720
+    if height <= 0:
+        height = 1280
+    if duration <= 0:
+        duration = 10.0
+    if frame_count <= 0:
+        frame_count = max(1, int(duration * fps))
 
     return {
         "fps": round(fps, 2),
         "width": width,
         "height": height,
-        "frame_count": frame_count,
+        "frame_count": max(1, frame_count),
         "duration": round(duration, 2),
         "has_audio": has_audio
     }
@@ -243,10 +287,13 @@ def auto_detect_dola_watermark(video_path, meta=None):
     Works for 9:16 (vertical reels), 16:9 (horizontal), and 1:1 (square).
     """
     if meta is None:
-        meta = get_video_metadata(video_path)
+        try:
+            meta = get_video_metadata(video_path)
+        except Exception:
+            meta = {"width": 720, "height": 1280}
     
-    width = meta["width"]
-    height = meta["height"]
+    width = meta.get("width", 720)
+    height = meta.get("height", 1280)
     aspect_ratio = width / max(1, height)
 
     if aspect_ratio < 0.8:
@@ -278,22 +325,43 @@ def auto_detect_dola_watermark(video_path, meta=None):
 
 def get_frame_at_time(video_path, timestamp_sec=0.0):
     """Extract a single frame as a BGR numpy array at a given timestamp."""
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Cannot open video: {video_path}")
-    
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps <= 0 or np.isnan(fps):
-        fps = 30.0
-        
-    frame_idx = int(timestamp_sec * fps)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-    ret, frame = cap.read()
-    if not ret:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        ret, frame = cap.read()
-    cap.release()
-    return frame
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0 or np.isnan(fps):
+                fps = 30.0
+            frame_idx = int(timestamp_sec * fps)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                return frame
+    except Exception as e:
+        print(f"OpenCV frame capture error: {e}")
+
+    # Fallback to FFmpeg frame extraction if cv2 fails
+    try:
+        temp_img = tempfile.mktemp(suffix=".jpg")
+        cmd = [FFMPEG_EXE, "-y", "-ss", str(max(0.0, timestamp_sec)), "-i", video_path, "-vframes", "1", "-q:v", "2", temp_img]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        if os.path.exists(temp_img):
+            frame = cv2.imread(temp_img)
+            try:
+                os.remove(temp_img)
+            except Exception:
+                pass
+            if frame is not None:
+                return frame
+    except Exception as fe:
+        print(f"FFmpeg frame fallback error: {fe}")
+
+    # Return empty fallback frame
+    return np.zeros((1280, 720, 3), dtype=np.uint8)
+
 
 def inpaint_frame(frame, bbox=None, method="telea", feather=3):
     """

@@ -46,6 +46,16 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 TASKS = {}
 TASK_CLEANUP_SECONDS = 1800  # Auto-cleanup completed tasks after 30 minutes
 
+@app.errorhandler(Exception)
+def handle_all_exceptions(e):
+    import traceback
+    traceback.print_exc()
+    status_code = getattr(e, "code", 500)
+    return jsonify({
+        "success": False,
+        "error": str(e)
+    }), status_code
+
 def cleanup_old_tasks():
     """Remove completed/error tasks older than TASK_CLEANUP_SECONDS to prevent memory leak."""
     now = time.time()
@@ -206,98 +216,113 @@ def start_processing():
     - Caption / Subtitle burning
     - Combined single-pass render
     """
-    data = request.json or {}
-    filename = data.get("filename")
-    if not filename:
-        return jsonify({"error": "filename required"}), 400
+    try:
+        data = request.get_json(silent=True) or {}
+        filename = data.get("filename")
+        if not filename:
+            return jsonify({"success": False, "error": "Filename is required"}), 400
 
-    video_path = os.path.join(UPLOAD_DIR, secure_filename(filename))
-    if not os.path.exists(video_path):
-        return jsonify({"error": "Video not found"}), 404
+        video_path = os.path.join(UPLOAD_DIR, secure_filename(filename))
+        if not os.path.exists(video_path):
+            return jsonify({"success": False, "error": f"Video file not found: {filename}"}), 404
 
-    # Automated backend defaults
-    bbox = data.get("bbox")
-    if not bbox:
-        bbox = auto_detect_dola_watermark(video_path)
-        
-    method = data.get("method", "telea")
-    feather = int(data.get("feather", 3))
+        # Automated backend defaults
+        bbox = data.get("bbox")
+        if not bbox:
+            try:
+                bbox = auto_detect_dola_watermark(video_path)
+            except Exception as be:
+                print("auto_detect_dola_watermark warning:", be)
+                bbox = [0, 0, 100, 50]
+            
+        method = data.get("method", "telea")
+        feather = int(data.get("feather", 3))
 
-    # Modes and caption options
-    remove_watermark = data.get("remove_watermark", True)
-    add_captions = data.get("add_captions", False)
-    captions = data.get("captions", [])
-    caption_style = data.get("caption_style", "classic")
-    caption_size = data.get("caption_size", "md")
-    caption_line_height = data.get("caption_line_height")
-    caption_pos_y = data.get("caption_pos_y")
-    quality = str(data.get("quality", "1080")).lower().strip()
-    q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
+        # Modes and caption options
+        remove_watermark = data.get("remove_watermark", True)
+        add_captions = data.get("add_captions", False)
+        captions = data.get("captions", [])
+        caption_style = data.get("caption_style", "classic")
+        caption_size = data.get("caption_size", "md")
+        caption_line_height = data.get("caption_line_height")
+        caption_pos_y = data.get("caption_pos_y")
+        quality = str(data.get("quality", "1080")).lower().strip()
+        q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
 
-    task_id = uuid.uuid4().hex
-    output_filename = f"dolaedits_{task_id[:10]}.mp4"
-    output_path = os.path.join(OUTPUT_DIR, output_filename)
+        task_id = uuid.uuid4().hex
+        output_filename = f"dolaedits_{task_id[:10]}.mp4"
+        output_path = os.path.join(OUTPUT_DIR, output_filename)
 
-    original_name = data.get("original_name") or filename
-    # Auto-cleanup old tasks before creating new ones
-    cleanup_old_tasks()
+        original_name = data.get("original_name") or filename
+        # Auto-cleanup old tasks before creating new ones
+        cleanup_old_tasks()
 
-    TASKS[task_id] = {
-        "status": "processing",
-        "percent": 0,
-        "current_frame": 0,
-        "total_frames": 0,
-        "fps": 0.0,
-        "eta": 0.0,
-        "quality": q_label,
-        "original_name": original_name,
-        "output_filename": output_filename,
-        "download_url": f"/api/download/{task_id}",
-        "video_url": f"/api/media/outputs/{output_filename}",
-        "error": None,
-        "created_at": time.time()
-    }
+        TASKS[task_id] = {
+            "status": "processing",
+            "percent": 0,
+            "current_frame": 0,
+            "total_frames": 0,
+            "fps": 0.0,
+            "eta": 0.0,
+            "quality": q_label,
+            "original_name": original_name,
+            "output_filename": output_filename,
+            "download_url": f"/api/download/{task_id}",
+            "video_url": f"/api/media/outputs/{output_filename}",
+            "error": None,
+            "created_at": time.time()
+        }
 
-    def background_worker():
-        def progress_cb(pct, cur, total, fps, eta):
-            TASKS[task_id]["percent"] = pct
-            TASKS[task_id]["current_frame"] = cur
-            TASKS[task_id]["total_frames"] = total
-            TASKS[task_id]["fps"] = fps
-            TASKS[task_id]["eta"] = eta
+        def background_worker():
+            def progress_cb(pct, cur, total, fps, eta):
+                TASKS[task_id]["percent"] = pct
+                TASKS[task_id]["current_frame"] = cur
+                TASKS[task_id]["total_frames"] = total
+                TASKS[task_id]["fps"] = fps
+                TASKS[task_id]["eta"] = eta
 
-        try:
-            # High-speed single-pass rendering: directly scales and crops in one pass with hardware acceleration
-            process_video(
-                video_path=video_path,
-                output_path=output_path,
-                bbox=bbox,
-                method=method,
-                feather=feather,
-                progress_callback=progress_cb,
-                remove_watermark=remove_watermark,
-                add_captions=add_captions,
-                captions=captions,
-                caption_style=caption_style,
-                caption_size=caption_size,
-                caption_line_height=caption_line_height,
-                caption_pos_y=caption_pos_y,
-                target_quality=q_label
-            )
+            try:
+                # High-speed single-pass rendering: directly scales and crops in one pass with hardware acceleration
+                process_video(
+                    video_path=video_path,
+                    output_path=output_path,
+                    bbox=bbox,
+                    method=method,
+                    feather=feather,
+                    progress_callback=progress_cb,
+                    remove_watermark=remove_watermark,
+                    add_captions=add_captions,
+                    captions=captions,
+                    caption_style=caption_style,
+                    caption_size=caption_size,
+                    caption_line_height=caption_line_height,
+                    caption_pos_y=caption_pos_y,
+                    target_quality=q_label
+                )
 
-            TASKS[task_id]["status"] = "completed"
-            TASKS[task_id]["percent"] = 100
-        except Exception as err:
-            TASKS[task_id]["status"] = "error"
-            TASKS[task_id]["error"] = str(err)
+                TASKS[task_id]["status"] = "completed"
+                TASKS[task_id]["percent"] = 100
+            except Exception as err:
+                import traceback
+                traceback.print_exc()
+                TASKS[task_id]["status"] = "error"
+                TASKS[task_id]["error"] = str(err)
 
-    thread = threading.Thread(target=background_worker, daemon=True)
-    thread.start()
+        thread = threading.Thread(target=background_worker, daemon=True)
+        thread.start()
 
-    return jsonify({
-        "success": True,
-        "task_id": task_id
-    })
+        return jsonify({
+            "success": True,
+            "task_id": task_id
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": f"Failed to start processing: {str(e)}"
+        }), 500
+
 
 @app.route("/api/status/<task_id>", methods=["GET"])
 def get_task_status(task_id):
