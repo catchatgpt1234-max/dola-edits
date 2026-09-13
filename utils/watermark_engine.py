@@ -524,7 +524,7 @@ def process_video(
                 crop_window_h -= 1
             crop_x = max(0, (width - crop_window_w) // 2)
             crop_y = 0
-            wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=bicubic,setsar=1"
+            wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=bilinear,setsar=1"
 
         # Build caption drawtext filter
         cap_filter = ""
@@ -546,12 +546,12 @@ def process_video(
         elif wm_filter:
             vf_filter = wm_filter
         elif cap_filter:
-            vf_filter = f"scale={tw}:{th}:flags=bicubic,setsar=1,{cap_filter}"
+            vf_filter = f"scale={tw}:{th}:flags=bilinear,setsar=1,{cap_filter}"
         else:
             vf_filter = "null"
 
         # Encoder selection: check NVENC support or use multithreaded ultrafast libx264
-        v_codec_args = ["-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-tune", "fastdecode", "-pix_fmt", "yuv420p"]
+        v_codec_args = ["-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-tune", "fastdecode", "-pix_fmt", "yuv420p"]
         if getattr(process_video, "_nvenc_supported", None) is None:
             try:
                 chk = subprocess.run([FFMPEG_EXE, "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.05", "-c:v", "h264_nvenc", "-f", "null", "-"], capture_output=True)
@@ -575,6 +575,7 @@ def process_video(
             cmd.extend(["-an"])
 
         cmd.extend([
+            "-nostats",
             "-progress", "pipe:1",
             output_path
         ])
@@ -584,27 +585,29 @@ def process_video(
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.DEVNULL,
                 text=True,
-                errors="ignore"
+                errors="ignore",
+                bufsize=1
             )
 
-            output_lines = []
+            fps_val = 0.0
             for line in proc.stdout:
                 line = line.strip()
-                if len(output_lines) > 50:
-                    output_lines.pop(0)
-                output_lines.append(line)
-
-                if line.startswith("frame="):
+                if line.startswith("fps="):
+                    try:
+                        fps_val = float(line.split("=")[1].strip())
+                    except:
+                        pass
+                elif line.startswith("frame="):
                     try:
                         cur_frame = int(line.split("=")[1].strip())
                         pct = min(98, int((cur_frame / max(1, total_frames)) * 100))
                         elapsed = time.time() - start_time
-                        fps_proc = cur_frame / max(0.1, elapsed)
-                        eta = (total_frames - cur_frame) / max(0.1, fps_proc)
+                        calc_fps = fps_val if fps_val > 1.0 else max(1.0, cur_frame / max(0.1, elapsed))
+                        eta = max(0.5, (total_frames - cur_frame) / max(1.0, calc_fps))
                         if progress_callback:
-                            progress_callback(pct, cur_frame, total_frames, round(fps_proc, 1), round(eta, 1))
+                            progress_callback(pct, cur_frame, total_frames, round(calc_fps, 1), round(eta, 1))
                     except:
                         pass
 

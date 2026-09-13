@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cleanVideoUrl: null,
         isCurrentlyBurnedVideo: false,
         burnedVideoUrl: null,
-        selectedQuality: '1080',
+        selectedQuality: 'original',
         isBulkStudioMode: false
     };
     window.appState = state;
@@ -238,27 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
             uploadStatFileSize.textContent = `${sizeMb} MB`;
         }
-        const isCaptionActive = Boolean(captionState && captionState.isCaptionAddActive);
-
-        if (isCaptionActive) {
-            // Caption Add Mode: Show AI speech transcription buffering modal
-            if (uploadModalTitle) uploadModalTitle.textContent = 'Uploading Video...';
-            if (uploadStatTime) uploadStatTime.textContent = '00:00';
-            setUploadProgress(0, 'Sending video file to Dola Edits engine...', '⚡ Buffering & Uploading...');
-            if (uploadCard) uploadCard.classList.add('hidden');
-            if (uploadProgressModal) uploadProgressModal.classList.remove('hidden');
-
-            const uploadStartTime = Date.now();
-            if (uploadTimerInterval) clearInterval(uploadTimerInterval);
-            uploadTimerInterval = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - uploadStartTime) / 1000);
-                if (uploadStatTime) uploadStatTime.textContent = formatTimeSec(elapsed);
-            }, 1000);
-        } else {
-            // Watermark-Only Mode: Direct to Before/After studio without modal (As requested by user!)
-            if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
-            if (dropzone) dropzone.classList.add('is-direct-uploading');
-        }
+        // Direct Upload: Never show blocking popup modal in any mode!
+        if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
+        if (dropzone) dropzone.classList.add('is-direct-uploading');
 
         const formData = new FormData();
         formData.append('video', file);
@@ -266,17 +248,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
 
-        // Real upload progress: 0% to 100% as client sends video bytes to server
+        // Real upload progress directly without popup modal
         xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable && isCaptionActive) {
+            if (e.lengthComputable && dropzone) {
                 const uploadPct = Math.min(99, Math.round((e.loaded / e.total) * 100));
-                setUploadProgress(uploadPct, `Uploading video (${uploadPct}%)...`, '⚡ Uploading...');
-            }
-        };
-
-        xhr.upload.onload = () => {
-            if (isCaptionActive) {
-                setUploadProgress(100, 'Saving video and preparing studio...', '⚡ Finalizing...');
+                dropzone.setAttribute('data-upload-pct', `${uploadPct}%`);
             }
         };
 
@@ -441,15 +417,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 captionState.cues = [];
                 // If video has audio, trigger background speech transcription asynchronously
                 if (data.metadata && data.metadata.has_audio) {
-                    if (captionSpeechBadge) {
-                        captionSpeechBadge.textContent = '⏳ AI Syncing...';
-                        captionSpeechBadge.classList.remove('hidden');
-                    }
+                    let estSeconds = Math.max(3, Math.min(8, Math.round((data.metadata.duration || 15) * 0.3)));
+                    const transcribeCenterLabel = document.querySelector('#transcribeBufferingOverlay .transcribe-label');
+
+                    const updateSyncTimerUI = (secRemaining) => {
+                        const timeStr = secRemaining > 0 ? `~${secRemaining}s` : 'finishing...';
+                        if (captionSpeechBadge) {
+                            captionSpeechBadge.textContent = `⏳ AI Syncing (${timeStr})`;
+                            captionSpeechBadge.classList.remove('hidden');
+                        }
+                        if (transcribeCenterLabel) {
+                            transcribeCenterLabel.textContent = `AI Syncing (${timeStr})`;
+                        }
+                    };
+
+                    updateSyncTimerUI(estSeconds);
                     if (captionTextInput) {
-                        captionTextInput.placeholder = 'AI syncing voice... (or type your own)';
+                        captionTextInput.placeholder = `AI syncing voice (~${estSeconds}s)... (or type your own subtitles)`;
                     }
                     // Show buffering spinner on video center
                     if (transcribeOverlay) transcribeOverlay.classList.remove('hidden');
+
+                    let remainingCountdown = estSeconds;
+                    if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
+                    state.transcribeCountdownInterval = setInterval(() => {
+                        remainingCountdown--;
+                        updateSyncTimerUI(remainingCountdown);
+                    }, 1000);
 
                     fetch('/api/transcribe', {
                         method: 'POST',
@@ -458,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                     .then(res => res.json())
                     .then(transData => {
+                        if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
                         // Hide buffering overlay
                         if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
 
@@ -481,6 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                     .catch(err => {
                         console.warn('Background transcription error:', err);
+                        if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
                         if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
                         if (captionSpeechBadge) {
                             captionSpeechBadge.textContent = '🔇 Manual Mode';
@@ -1493,8 +1489,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (task.status === 'processing') {
                     let etaText = '--';
-                    if (task.eta && task.eta > 0) {
+                    if (task.current_frame < 5 && task.percent < 5) {
+                        etaText = 'Calculating...';
+                    } else if (task.eta && task.eta > 0 && task.eta < 60) {
                         etaText = `${Math.ceil(task.eta)}s`;
+                    } else if (task.eta >= 60) {
+                        etaText = `${Math.ceil(task.eta / 60)}m ${Math.ceil(task.eta % 60)}s`;
                     } else if (task.fps > 0 && task.total_frames > task.current_frame) {
                         const remFrames = task.total_frames - task.current_frame;
                         const calcSec = Math.ceil(remFrames / task.fps);
@@ -1502,17 +1502,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (task.percent >= 90) {
                         etaText = 'Finishing...';
                     } else {
-                        etaText = '~12s';
+                        etaText = '~5s';
                     }
 
                     if (processBufferingBadgeText) {
                         processBufferingBadgeText.textContent = task.percent >= 90 ? '⚡ Buffering & Finalizing Audio...' : '⚡ Buffering & AI Processing...';
                     }
+                    const displayFps = (task.fps > 1.0) ? `${task.fps} fps` : (task.current_frame > 5 ? `${task.fps} fps` : 'Starting...');
                     updateProgressUI(
                         task.percent,
                         task.current_frame,
                         task.total_frames,
-                        task.fps,
+                        displayFps,
                         etaText,
                         task.percent >= 90 ? 'Finalizing audio & video master...' : 'Permanently eliminating Dola watermark...'
                     );
