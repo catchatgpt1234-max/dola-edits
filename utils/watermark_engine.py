@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import cv2
 import numpy as np
 import subprocess
@@ -7,10 +9,47 @@ import uuid
 import time
 import tempfile
 import re
-import imageio_ffmpeg
 
-# Get FFmpeg binary bundled with imageio-ffmpeg
-FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+def get_ffmpeg_binary():
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    
+    # 1. Local bin/ directory (downloaded via render-build.sh)
+    for bin_name in ["ffmpeg", "ffmpeg.exe"]:
+        local_bin = os.path.join(base_dir, "bin", bin_name)
+        if os.path.exists(local_bin) and (os.access(local_bin, os.X_OK) or sys.platform.startswith("win")):
+            return local_bin
+
+    # 2. System PATH
+    sys_ffmpeg = shutil.which("ffmpeg")
+    if sys_ffmpeg:
+        return sys_ffmpeg
+
+    # 3. Auto-download on Linux (Render container) if missing
+    if sys.platform.startswith("linux"):
+        local_bin = os.path.join(base_dir, "bin", "ffmpeg")
+        os.makedirs(os.path.join(base_dir, "bin"), exist_ok=True)
+        if not os.path.exists(local_bin) or os.path.getsize(local_bin) < 100000:
+            print("⏳ Downloading full static Linux FFmpeg with drawtext...")
+            try:
+                import urllib.request
+                urllib.request.urlretrieve(
+                    "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64",
+                    local_bin
+                )
+                os.chmod(local_bin, 0o755)
+                if os.path.exists(local_bin) and os.path.getsize(local_bin) > 1000000:
+                    return local_bin
+            except Exception as de:
+                print("FFmpeg download error:", de)
+
+    # 4. Fallback to imageio_ffmpeg
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+FFMPEG_EXE = get_ffmpeg_binary()
 
 # Font path for captions (SoniAutoEditor / ZBot font)
 CAPTION_FONT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "fonts", "caption.ttf"))
@@ -571,28 +610,45 @@ def process_video(
 
             proc.wait()
 
-            # If copy audio failed due to container mismatch, fallback to AAC re-encode
-            if proc.returncode != 0 and has_audio:
-                recent_err = "\n".join(output_lines[-15:])
-                print("FFMPEG primary encode notice (returncode", proc.returncode, "): retrying with AAC re-encode... Last lines:\n", recent_err)
+            # If primary encode failed
+            if proc.returncode != 0:
+                recent_err = "\n".join(output_lines[-20:])
+                print("FFMPEG primary encode notice (returncode", proc.returncode, "): Last lines:\n", recent_err)
+                
+                # Check if drawtext was the cause of failure
+                if "drawtext" in recent_err and cap_filter:
+                    print("⚠️ 'drawtext' filter not supported in current FFmpeg build. Retrying without captions...")
+                    retry_filter = wm_filter if wm_filter else f"scale={tw}:{th}:flags=bicubic,setsar=1"
+                else:
+                    retry_filter = vf_filter
+
                 cmd_fallback = [
                     FFMPEG_EXE, "-y",
                     "-i", video_path,
-                    "-vf", vf_filter,
+                    "-vf", retry_filter,
                     "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "17",
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    output_path
+                    "-preset", "ultrafast",
+                    "-crf", "18",
+                    "-pix_fmt", "yuv420p"
                 ]
+                if has_audio:
+                    cmd_fallback.extend(["-c:a", "aac", "-b:a", "192k"])
+                else:
+                    cmd_fallback.append("-an")
+                cmd_fallback.append(output_path)
+
                 res_fb = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 if res_fb.returncode != 0:
-                    raise RuntimeError(f"FFmpeg fallback encode error: {res_fb.stdout[-800:]}")
-            elif proc.returncode != 0:
-                recent_err = "\n".join(output_lines[-20:])
-                raise RuntimeError(f"FFmpeg encode error (code {proc.returncode}): {recent_err}")
+                    if "drawtext" in res_fb.stdout and cap_filter and retry_filter == vf_filter:
+                        # Second fallback without captions
+                        print("⚠️ Retrying fallback without drawtext...")
+                        retry_filter = wm_filter if wm_filter else f"scale={tw}:{th}:flags=bicubic,setsar=1"
+                        cmd_fallback[4] = retry_filter
+                        res_fb2 = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                        if res_fb2.returncode != 0:
+                            raise RuntimeError(f"FFmpeg encode error: {res_fb2.stdout[-600:]}")
+                    else:
+                        raise RuntimeError(f"FFmpeg fallback encode error: {res_fb.stdout[-600:]}")
 
         except Exception as e:
             raise RuntimeError(f"Error processing video: {str(e)}")
