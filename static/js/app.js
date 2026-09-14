@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     const state = {
         currentFilename: null,
+        originalName: null,
         videoMeta: null,
         autoBbox: null,
         pollInterval: null,
@@ -13,10 +14,48 @@ document.addEventListener('DOMContentLoaded', () => {
         isCurrentlyBurnedVideo: false,
         burnedVideoUrl: null,
         selectedQuality: 'original',
-        isBulkStudioMode: false
+        isBulkStudioMode: false,
+        isProcessingRunning: false
     };
     window.appState = state;
     window.state = state;
+
+    // Strict Download Deduplication & Single Execution Guard
+    const downloadedTaskIds = new Set();
+    let lastDownloadTimestamp = 0;
+
+    function safeTriggerDownload(url, filename, taskId) {
+        if (!url) return false;
+        
+        // 1. Task ID deduplication - never auto-download the same completed task twice
+        if (taskId && downloadedTaskIds.has(taskId)) {
+            console.warn(`[SafeDownload] Blocked duplicate auto-download for taskId: ${taskId}`);
+            return false;
+        }
+
+        // 2. Rapid-fire debounce guard (min 1500ms between automatic downloads)
+        const now = Date.now();
+        if (now - lastDownloadTimestamp < 1500) {
+            console.warn(`[SafeDownload] Blocked rapid-fire duplicate download spam (< 1.5s): ${url}`);
+            return false;
+        }
+        lastDownloadTimestamp = now;
+
+        if (taskId) {
+            downloadedTaskIds.add(taskId);
+        }
+
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        if (filename) a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            if (a.parentNode) a.parentNode.removeChild(a);
+        }, 1500);
+        return true;
+    }
 
     // DOM Elements - Navigation & Cards
     const dropzone = document.getElementById('dropzone');
@@ -349,8 +388,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnCaptionEditText) btnCaptionEditText.textContent = 'Download Clean Video';
 
         state.currentFilename = data.filename;
+        state.originalName = data.original_name || data.filename;
         state.videoMeta = data.metadata;
         state.autoBbox = data.auto_bbox;
+        state.isProcessingRunning = false;
+        state.activeTaskId = null;
+        state.isCurrentlyBurnedVideo = false;
+        state.burnedVideoUrl = null;
 
         if (videoFileName) videoFileName.textContent = data.original_name || data.filename;
         if (metaRes) metaRes.textContent = `${data.metadata.width}x${data.metadata.height}`;
@@ -1211,6 +1255,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CORE PROCESS TRIGGER EXECUTOR (WATERMARK ONLY, CAPTION ONLY, OR COMBINED) ---
     async function executeProcessing({ remove_watermark, add_captions }) {
         if (!state.currentFilename) return;
+        if (state.isProcessingRunning) {
+            console.warn('executeProcessing is already active, ignoring duplicate invocation');
+            return;
+        }
+        state.isProcessingRunning = true;
         if (sourceVideo) sourceVideo.pause();
 
         if (btnStartAutoProcess) btnStartAutoProcess.disabled = true;
@@ -1232,6 +1281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     filename: state.currentFilename,
+                    original_name: state.originalName || (state.videoMeta && state.videoMeta.original_name) || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename,
                     remove_watermark: remove_watermark,
                     add_captions: add_captions,
                     captions: add_captions ? captionState.cues : [],
@@ -1257,6 +1307,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.activeTaskId = data.task_id;
             startProgressPolling(data.task_id);
         } catch (err) {
+            state.isProcessingRunning = false;
             processingModal.classList.add('hidden');
             if (previewActionCard) previewActionCard.classList.remove('hidden');
             if (btnStartAutoProcess) btnStartAutoProcess.disabled = false;
@@ -1419,21 +1470,57 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    let currentInPlaceTaskId = null;
     function startInPlaceProgressPolling(taskId) {
-        if (state.pollInterval) clearInterval(state.pollInterval);
-        state.pollInterval = setInterval(async () => {
+        if (state.pollInterval) {
+            clearTimeout(state.pollInterval);
+            clearInterval(state.pollInterval);
+            state.pollInterval = null;
+        }
+
+        currentInPlaceTaskId = taskId;
+        let isCompletedHandled = false;
+        let inFlight = false;
+
+        async function pollTick() {
+            if (currentInPlaceTaskId !== taskId || isCompletedHandled) return;
+            if (inFlight) return;
+            inFlight = true;
+
             try {
                 const resp = await fetch(`/api/status/${taskId}`);
-                if (!resp.ok) return;
+                if (!resp.ok) {
+                    inFlight = false;
+                    if (currentInPlaceTaskId === taskId && !isCompletedHandled) {
+                        state.pollInterval = setTimeout(pollTick, 800);
+                    }
+                    return;
+                }
 
                 const task = await resp.json();
+                if (currentInPlaceTaskId !== taskId || isCompletedHandled) {
+                    inFlight = false;
+                    return;
+                }
+
                 if (task.status === 'completed') {
-                    clearInterval(state.pollInterval);
+                    isCompletedHandled = true;
+                    currentInPlaceTaskId = null;
+                    if (state.pollInterval) {
+                        clearTimeout(state.pollInterval);
+                        state.pollInterval = null;
+                    }
                     if (afterBufferingOverlay) afterBufferingOverlay.classList.add('hidden');
                     if (cleanPlayerContainer) cleanPlayerContainer.classList.remove('has-buffering-active');
                     showResultScreen(task);
                 } else if (task.status === 'error') {
-                    clearInterval(state.pollInterval);
+                    isCompletedHandled = true;
+                    currentInPlaceTaskId = null;
+                    state.isProcessingRunning = false;
+                    if (state.pollInterval) {
+                        clearTimeout(state.pollInterval);
+                        state.pollInterval = null;
+                    }
                     if (afterBufferingOverlay) afterBufferingOverlay.classList.add('hidden');
                     if (cleanPlayerContainer) cleanPlayerContainer.classList.remove('has-buffering-active');
                     if (afterPlaceholder) afterPlaceholder.classList.remove('hidden');
@@ -1443,23 +1530,42 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (removerBtnText) removerBtnText.textContent = 'Remove Watermark';
                     if (removerStatusSubtext) removerStatusSubtext.innerHTML = '<span>⚡ Click to Remove Dola Watermark</span>';
                     alert('Watermark removal error: ' + (task.error || 'Unknown error'));
+                } else {
+                    inFlight = false;
+                    if (currentInPlaceTaskId === taskId && !isCompletedHandled) {
+                        state.pollInterval = setTimeout(pollTick, 500);
+                    }
                 }
             } catch (err) {
                 console.warn('In-place status check warning:', err);
+                inFlight = false;
+                if (currentInPlaceTaskId === taskId && !isCompletedHandled) {
+                    state.pollInterval = setTimeout(pollTick, 1000);
+                }
             }
-        }, 500);
+        }
+
+        state.pollInterval = setTimeout(pollTick, 150);
     }
 
     // 2. Caption Section Option 1: "Download Clean Video"
     if (btnCaptionRemoveOnlyWm) {
         btnCaptionRemoveOnlyWm.addEventListener('click', () => {
             if (state.cleanVideoUrl) {
+                const now = Date.now();
+                if (now - lastDownloadTimestamp < 1500) return;
+                lastDownloadTimestamp = now;
+
+                const rawBase = state.originalName || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename || 'video';
+                const cleanBase = rawBase.replace(/\.[^/.]+$/, '').slice(0, 20);
+                const dlName = `dolaedits_clean_${cleanBase}.mp4`;
+                
                 const a = document.createElement('a');
                 a.href = state.cleanVideoUrl;
-                a.download = `dolaedits_clean_${state.currentFilename ? state.currentFilename.replace(/\.[^/.]+$/, '') : 'video'}.mp4`;
+                a.download = dlName;
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
+                setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1500);
             } else {
                 executeProcessing({ remove_watermark: true, add_captions: false });
             }
@@ -1474,20 +1580,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (state.isProcessingRunning) {
+                console.warn('Processing already active, please wait.');
+                return;
+            }
+
             const duration = (state.videoMeta && state.videoMeta.duration) || 10;
             if ((!captionState.cues || captionState.cues.length === 0) && captionTextInput && captionTextInput.value.trim()) {
                 captionState.cues = parseSubtitlesText(captionTextInput.value.trim(), duration);
             }
 
-            // If video is already rendered with current captions, trigger immediate download!
+            // If video is already rendered with current captions, trigger immediate single download!
             if (state.isCurrentlyBurnedVideo && state.activeTaskId) {
+                const now = Date.now();
+                if (now - lastDownloadTimestamp < 1500) return;
+                lastDownloadTimestamp = now;
+
                 const q = state.selectedQuality || '1080';
+                const dlUrl = `/api/download/${state.activeTaskId}?quality=${q}`;
+                const rawBase = state.originalName || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename || 'video';
+                const cleanBase = rawBase.replace(/\.[^/.]+$/, '').slice(0, 20);
+
                 const a = document.createElement('a');
-                a.href = `/api/download/${state.activeTaskId}?quality=${q}`;
-                a.download = `dolaedits_${q}_${state.activeTaskId.slice(0, 6)}.mp4`;
+                a.href = dlUrl;
+                a.download = `dolaedits_${q}_${cleanBase}.mp4`;
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
+                setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1500);
                 return;
             }
 
@@ -1500,18 +1619,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let currentPollingTaskId = null;
     function startProgressPolling(taskId) {
-        if (state.pollInterval) clearInterval(state.pollInterval);
+        if (state.pollInterval) {
+            clearTimeout(state.pollInterval);
+            clearInterval(state.pollInterval);
+            state.pollInterval = null;
+        }
+
+        currentPollingTaskId = taskId;
+        let isCompletedHandled = false;
+        let inFlight = false;
         const processStartTime = Date.now();
         if (statElapsed) statElapsed.textContent = '00:00';
         if (processBufferingBadgeText) processBufferingBadgeText.textContent = '⚡ Buffering & AI Processing...';
 
-        state.pollInterval = setInterval(async () => {
+        async function pollTick() {
+            if (currentPollingTaskId !== taskId || isCompletedHandled) return;
+            if (inFlight) return;
+            inFlight = true;
+
             try {
                 const resp = await fetch(`/api/status/${taskId}`);
-                if (!resp.ok) return;
+                if (!resp.ok) {
+                    inFlight = false;
+                    if (currentPollingTaskId === taskId && !isCompletedHandled) {
+                        state.pollInterval = setTimeout(pollTick, 800);
+                    }
+                    return;
+                }
 
                 const task = await resp.json();
+                if (currentPollingTaskId !== taskId || isCompletedHandled) {
+                    inFlight = false;
+                    return;
+                }
 
                 // Live Elapsed Time calculation
                 const elapsedSec = Math.floor((Date.now() - processStartTime) / 1000);
@@ -1550,8 +1692,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         etaText,
                         task.percent >= 90 ? 'Finalizing audio & video master...' : (task.percent > 0 ? 'Permanently eliminating Dola watermark...' : 'Initializing AI render engine...')
                     );
+
+                    inFlight = false;
+                    if (currentPollingTaskId === taskId && !isCompletedHandled) {
+                        state.pollInterval = setTimeout(pollTick, 450);
+                    }
                 } else if (task.status === 'completed') {
-                    clearInterval(state.pollInterval);
+                    isCompletedHandled = true;
+                    currentPollingTaskId = null;
+                    if (state.pollInterval) {
+                        clearTimeout(state.pollInterval);
+                        state.pollInterval = null;
+                    }
+
                     if (processBufferingBadgeText) processBufferingBadgeText.textContent = '🎉 Complete!';
                     updateProgressUI(100, task.total_frames, task.total_frames, task.fps || 'Done', 'Done!', 'Complete! Loading clean video...');
 
@@ -1561,7 +1714,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         showResultScreen(task);
                     }, 400);
                 } else if (task.status === 'error') {
-                    clearInterval(state.pollInterval);
+                    isCompletedHandled = true;
+                    currentPollingTaskId = null;
+                    state.isProcessingRunning = false;
+                    if (state.pollInterval) {
+                        clearTimeout(state.pollInterval);
+                        state.pollInterval = null;
+                    }
                     processingModal.classList.add('hidden');
                     if (previewActionCard) previewActionCard.classList.remove('hidden');
                     if (btnStartAutoProcess) btnStartAutoProcess.disabled = false;
@@ -1570,8 +1729,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {
                 console.error('Polling error:', e);
+                inFlight = false;
+                if (currentPollingTaskId === taskId && !isCompletedHandled) {
+                    state.pollInterval = setTimeout(pollTick, 800);
+                }
             }
-        }, 350);
+        }
+
+        state.pollInterval = setTimeout(pollTick, 100);
     }
 
     function updateProgressUI(pct, cur, total, fps, eta, statusMsg) {
@@ -1590,6 +1755,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showResultScreen(task) {
+        state.isProcessingRunning = false;
         if (btnStartAutoProcess) {
             btnStartAutoProcess.disabled = false;
             btnStartAutoProcess.classList.remove('is-processing');
@@ -1625,15 +1791,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide live overlay since captions are now burned into the video
             if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
 
-            // Automatically trigger download directly into browser
+            // Automatically trigger download directly into browser ONCE via deduplicated safeTriggerDownload
             const q = state.selectedQuality || '1080';
             const dlUrl = `${task.download_url}?quality=${q}`;
-            const a = document.createElement('a');
-            a.href = dlUrl;
-            a.download = `dolaedits_${q}_${(task.task_id || state.activeTaskId || 'video').slice(0, 6)}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const targetTaskId = task.task_id || state.activeTaskId || 'video';
+            const rawBase = state.originalName || (state.videoMeta && state.videoMeta.original_name) || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename || 'video';
+            const cleanBase = rawBase.replace(/\.[^/.]+$/, '').slice(0, 20);
+
+            safeTriggerDownload(dlUrl, `dolaedits_${q}_${cleanBase}.mp4`, targetTaskId);
             state.autoTriggerDownload = false;
             return;
         }
@@ -3856,6 +4021,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnWmCombinedAction = document.getElementById('btnWmCombinedAction');
     if (btnWmCombinedAction) {
         btnWmCombinedAction.addEventListener('click', () => {
+            if (state.isProcessingRunning) {
+                console.warn('Processing already active, please wait.');
+                return;
+            }
             if (state.isBulkStudioMode) {
                 executeBulkStudioBatchProcessing();
             } else {
