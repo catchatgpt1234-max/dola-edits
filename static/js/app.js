@@ -2264,8 +2264,8 @@ document.addEventListener('DOMContentLoaded', () => {
         (async () => {
             for (let i = 0; i < newItems.length; i++) {
                 const it = newItems[i];
-                if (!it.transcription && !it.isTranscribing && it.file) {
-                    it.isTranscribing = true;
+                if (!it.serverFilename && !it.isUploading && it.file) {
+                    it.isUploading = true;
                     try {
                         const fd = new FormData();
                         fd.append('video', it.file);
@@ -2277,14 +2277,33 @@ document.addEventListener('DOMContentLoaded', () => {
                             it.metadata = data.metadata;
                             it.cleanVideoUrl = data.clean_video_url;
                             it.cleanFilename = data.clean_filename;
-                            it.transcription = data.transcription;
+                        }
+                    } catch (err) {
+                        console.log('Background queue upload notice:', err);
+                    } finally {
+                        it.isUploading = false;
+                    }
+                }
+
+                // If Caption Add is active, immediately transcribe voice so subtitles are ready!
+                if (captionState.isCaptionAddActive && it.serverFilename && (!it.transcription || !it.transcription.completed)) {
+                    it.isTranscribing = true;
+                    try {
+                        const trRes = await fetch('/api/transcribe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: it.serverFilename })
+                        });
+                        const trData = await trRes.json();
+                        if (trData && trData.success) {
+                            it.transcription = { ...trData, completed: true };
                             // If user is currently looking at this item in Bulk Studio, refresh it live!
                             if (state.isBulkStudioMode && bulkQueue[state.currentBulkIndex] === it) {
                                 loadBulkPreviewVideo(it);
                             }
                         }
-                    } catch (err) {
-                        console.log('Background queue transcription notice:', err);
+                    } catch (te) {
+                        console.log('Background queue transcription error:', te);
                     } finally {
                         it.isTranscribing = false;
                     }
@@ -2910,10 +2929,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!serverFilename) {
                 const formData = new FormData();
                 formData.append('video', item.file);
-                // Transcribe only if Caption Add is selected
-                if (!captionState.isCaptionAddActive) {
-                    formData.append('skip_transcription', 'true');
-                }
                 formData.append('skip_preclean', 'true');
                 const uploadRes = await fetch('/api/upload', {
                     method: 'POST',
@@ -2924,22 +2939,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
                 serverFilename = uploadData.filename;
                 item.serverFilename = serverFilename;
-                if (uploadData.transcription) {
-                    item.transcription = uploadData.transcription;
-                }
-            } else if (captionState.isCaptionAddActive && !item.transcription && !item.hasUserEditedSubtitles) {
-                try {
-                    const trRes = await fetch('/api/transcribe', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename: serverFilename })
-                    });
-                    if (trRes.ok) {
-                        const trData = await trRes.json();
-                        if (trData.success) item.transcription = trData;
+            }
+
+            if (captionState.isCaptionAddActive && !item.hasUserEditedSubtitles) {
+                const hasValidCues = item.transcription && item.transcription.cues && item.transcription.cues.length > 0;
+                if (!hasValidCues) {
+                    try {
+                        const trRes = await fetch('/api/transcribe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: serverFilename })
+                        });
+                        if (trRes.ok) {
+                            const trData = await trRes.json();
+                            if (trData.success) item.transcription = { ...trData, completed: true };
+                        }
+                    } catch (te) {
+                        console.warn('Transcription fetch warning:', te);
                     }
-                } catch (te) {
-                    console.warn('Transcription fetch warning:', te);
                 }
             }
 
@@ -2952,18 +2969,17 @@ document.addEventListener('DOMContentLoaded', () => {
             setMonotonicItemPercent(item, 20);
 
             // Determine video subtitle cues:
-            // CRITICAL:
-            // 1. User custom cues for this video > 2. This video's OWN speech transcription > 3. EMPTY
-            // NEVER fall back to dummy English cues! If no speech, NO subtitles added!
             if (item.hasUserEditedSubtitles && item.customCues && item.customCues.length > 0) {
                 videoCues = item.customCues;
-            } else if (captionState.isCaptionAddActive && item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
+            } else if (item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
                 videoCues = item.transcription.cues;
+            } else if (captionState.cues && captionState.cues.length > 0) {
+                videoCues = captionState.cues;
             } else {
                 videoCues = [];
             }
 
-            const shouldAddCaptions = captionState.isCaptionAddActive && (videoCues && videoCues.length > 0);
+            const shouldAddCaptions = captionState.isCaptionAddActive;
 
             const procRes = await fetch('/api/process', {
                 method: 'POST',
@@ -3222,149 +3238,124 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 2. If this item already has cached transcription (with speech or without speech)
-        if (item.transcription) {
-            if (item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
-                captionState.cues = item.transcription.cues;
-                renderCuesList();
-                if (captionTextInput) {
-                    captionTextInput.value = item.transcription.formatted_text || item.transcription.cues.map(c => `[${formatCueTime(c.start)} - ${formatCueTime(c.end)}] ${c.text}`).join('\n');
-                    captionTextInput.placeholder = 'Type custom subtitles here...';
-                }
-                if (captionSpeechBadge) {
-                    captionSpeechBadge.textContent = `🎙️ AI Speech Synced (${item.transcription.cues.length} lines)`;
-                    captionSpeechBadge.classList.remove('hidden');
-                }
-                if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
-                updateLiveSubtitleOverlay(sourceVideo ? (sourceVideo.currentTime || 0) : 0);
-            } else {
-                // Video is silent / no speech detected -> NEVER inject dummy captions!
-                captionState.cues = [];
-                renderCuesList();
-                if (captionTextInput) {
-                    captionTextInput.value = '';
-                    captionTextInput.placeholder = 'No speech detected in this video. You can type custom subtitles here...';
-                }
-                if (captionSpeechBadge) {
-                    captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
-                    captionSpeechBadge.classList.remove('hidden');
-                }
-                if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-                updateLiveSubtitleOverlay(0);
+        // 2. If this item already has valid cached transcription with speech cues
+        if (item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
+            captionState.cues = item.transcription.cues;
+            renderCuesList();
+            if (captionTextInput) {
+                captionTextInput.value = item.transcription.formatted_text || item.transcription.cues.map(c => `[${formatCueTime(c.start)} - ${formatCueTime(c.end)}] ${c.text}`).join('\n');
+                captionTextInput.placeholder = 'Type custom subtitles here...';
             }
+            if (captionSpeechBadge) {
+                captionSpeechBadge.textContent = `🎙️ AI Speech Synced (${item.transcription.cues.length} lines)`;
+                captionSpeechBadge.classList.remove('hidden');
+            }
+            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+            updateLiveSubtitleOverlay(sourceVideo ? (sourceVideo.currentTime || 0) : 0);
             const trOverlay = document.getElementById('transcribeBufferingOverlay');
             if (trOverlay) trOverlay.classList.add('hidden');
             return;
         }
 
+        // 3. If already completed transcription and confirmed to have no speech
+        if (item.transcription && item.transcription.completed && item.transcription.has_speech === false) {
+            captionState.cues = [];
+            renderCuesList();
+            if (captionTextInput) {
+                captionTextInput.value = '';
+                captionTextInput.placeholder = 'No speech detected in this video. You can type custom subtitles here...';
+            }
+            if (captionSpeechBadge) {
+                captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
+                captionSpeechBadge.classList.remove('hidden');
+            }
+            if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
+            updateLiveSubtitleOverlay(0);
+            const trOverlay = document.getElementById('transcribeBufferingOverlay');
+            if (trOverlay) trOverlay.classList.add('hidden');
+            return;
+        }
+
+        // 4. Transcription not yet completed: Show buffering spinner and transcribe!
         const trOverlay = document.getElementById('transcribeBufferingOverlay');
         if (trOverlay) trOverlay.classList.remove('hidden');
+        if (captionSpeechBadge) {
+            captionSpeechBadge.textContent = '⏳ AI Transcribing Audio... Please wait...';
+            captionSpeechBadge.classList.remove('hidden');
+        }
+        if (captionTextInput) {
+            captionTextInput.value = '';
+            captionTextInput.placeholder = '⏳ AI analyzing voice & syncing accurate captions... Please wait a moment...';
+        }
+        if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
 
-        // Check if item already has serverFilename from background queue
-        if (item.serverFilename) {
-            try {
+        try {
+            item.isTranscribing = true;
+            if (!item.serverFilename && item.file) {
+                const formData = new FormData();
+                formData.append('video', item.file);
+                formData.append('skip_preclean', 'true');
+                const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+                const upData = await upRes.json();
+                if (upData.success) {
+                    item.serverFilename = upData.filename;
+                    item.cleanVideoUrl = upData.clean_video_url;
+                    item.cleanFilename = upData.clean_filename;
+                    state.currentFilename = upData.filename;
+                    state.videoMeta = upData.metadata;
+                    item.metadata = upData.metadata;
+                    applyAspectRatio(previewPlayerContainer, upData.metadata);
+                    if (bulkMetaRes) bulkMetaRes.textContent = `${upData.metadata.width}x${upData.metadata.height}`;
+                    if (bulkMetaDuration) bulkMetaDuration.textContent = formatTime(upData.metadata.duration);
+                    if (metaRes) metaRes.textContent = `${upData.metadata.width}x${upData.metadata.height}`;
+                    if (metaDuration) metaDuration.textContent = formatTime(upData.metadata.duration);
+                }
+            }
+
+            if (item.serverFilename) {
                 const trRes = await fetch('/api/transcribe', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ filename: item.serverFilename })
                 });
                 const trData = await trRes.json();
-                if (trData.success) {
-                    item.transcription = trData;
-                    if (trData.has_speech && trData.cues && trData.cues.length > 0) {
-                        captionState.cues = trData.cues;
-                        renderCuesList();
-                        if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
-                        updateLiveSubtitleOverlay(sourceVideo ? (sourceVideo.currentTime || 0) : 0);
-                    }
-                    if (trOverlay) trOverlay.classList.add('hidden');
-                    return;
-                }
-            } catch (e) {
-                console.warn('Transcribe fetch notice:', e);
-            }
-        }
-
-        // 3. Not yet transcribed: Show REAL buffering indicator while Whisper processes!
-        captionState.cues = [];
-        renderCuesList();
-        if (captionTextInput) {
-            captionTextInput.value = '';
-            captionTextInput.placeholder = '⏳ AI analyzing voice & syncing accurate captions... Please wait a moment...';
-        }
-        if (captionSpeechBadge) {
-            captionSpeechBadge.textContent = '⏳ AI Transcribing Audio... Please wait...';
-            captionSpeechBadge.classList.remove('hidden');
-        }
-        if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-
-        try {
-            item.isTranscribing = true;
-            const formData = new FormData();
-            formData.append('video', item.file);
-            formData.append('skip_preclean', 'true');
-            const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
-            const upData = await upRes.json();
-            if (trOverlay) trOverlay.classList.add('hidden');
-            if (upData.success) {
-                item.serverFilename = upData.filename;
-                item.cleanVideoUrl = upData.clean_video_url;
-                item.cleanFilename = upData.clean_filename;
-                state.currentFilename = upData.filename;
-                state.videoMeta = upData.metadata;
-                item.metadata = upData.metadata;
-                item.transcription = upData.transcription;
-
-                if (captionState.isWatermarkRemoveActive && upData.clean_video_url) {
-                    state.cleanVideoUrl = upData.clean_video_url;
-                    if (sourceVideo && sourceVideo.src !== upData.clean_video_url) {
-                        sourceVideo.src = upData.clean_video_url;
-                        sourceVideo.load();
-                    }
-                }
-                applyAspectRatio(previewPlayerContainer, upData.metadata);
-                if (bulkMetaRes) bulkMetaRes.textContent = `${upData.metadata.width}x${upData.metadata.height}`;
-                if (bulkMetaDuration) bulkMetaDuration.textContent = formatTime(upData.metadata.duration);
-                if (metaRes) metaRes.textContent = `${upData.metadata.width}x${upData.metadata.height}`;
-                if (metaDuration) metaDuration.textContent = formatTime(upData.metadata.duration);
-
-                // Update Studio UI if user is currently previewing this video
-                if (bulkQueue[state.currentBulkIndex] === item) {
-                    if (item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
-                        if (!item.hasUserEditedSubtitles) {
-                            captionState.cues = item.transcription.cues;
+                if (trData && trData.success) {
+                    item.transcription = { ...trData, completed: true };
+                    if (bulkQueue[state.currentBulkIndex] === item) {
+                        if (trData.has_speech && trData.cues && trData.cues.length > 0) {
+                            captionState.cues = trData.cues;
                             renderCuesList();
                             if (captionTextInput) {
-                                captionTextInput.value = item.transcription.formatted_text || item.transcription.cues.map(c => `[${formatCueTime(c.start)} - ${formatCueTime(c.end)}] ${c.text}`).join('\n');
+                                captionTextInput.value = trData.formatted_text || trData.cues.map(c => `[${formatCueTime(c.start)} - ${formatCueTime(c.end)}] ${c.text}`).join('\n');
                                 captionTextInput.placeholder = 'Type custom subtitles here...';
                             }
                             if (captionSpeechBadge) {
-                                captionSpeechBadge.textContent = `🎙️ AI Speech Synced (${item.transcription.cues.length} lines)`;
+                                captionSpeechBadge.textContent = `🎙️ AI Speech Synced (${trData.cues.length} lines)`;
                                 captionSpeechBadge.classList.remove('hidden');
                             }
                             if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
                             updateLiveSubtitleOverlay(sourceVideo ? (sourceVideo.currentTime || 0) : 0);
+                        } else {
+                            captionState.cues = [];
+                            renderCuesList();
+                            if (captionTextInput) {
+                                captionTextInput.value = '';
+                                captionTextInput.placeholder = 'No speech detected in this video.';
+                            }
+                            if (captionSpeechBadge) {
+                                captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
+                                captionSpeechBadge.classList.remove('hidden');
+                            }
                         }
-                    } else {
-                        // Silent video
-                        captionState.cues = [];
-                        renderCuesList();
-                        if (captionTextInput) {
-                            captionTextInput.value = '';
-                            captionTextInput.placeholder = 'No speech detected in this video. You can type custom subtitles here...';
-                        }
-                        if (captionSpeechBadge) {
-                            captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
-                            captionSpeechBadge.classList.remove('hidden');
-                        }
-                        if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-                        updateLiveSubtitleOverlay(0);
                     }
                 }
-            } else {
-                throw new Error(upData.error || 'Failed to analyze video');
             }
         } catch (err) {
+            console.log('Bulk preview video transcription error:', err);
+        } finally {
+            item.isTranscribing = false;
+            if (trOverlay) trOverlay.classList.add('hidden');
+        }
             console.log('Bulk preview video setup notice:', err);
             captionState.cues = [];
             renderCuesList();
@@ -3580,29 +3571,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!serverFilename) {
                     const fd = new FormData();
                     fd.append('video', item.file);
-                    if (!captionState.isCaptionAddActive) {
-                        fd.append('skip_transcription', 'true');
-                    }
                     fd.append('skip_preclean', 'true');
                     const upRes = await fetch('/api/upload', { method: 'POST', body: fd });
                     const upData = await upRes.json();
                     if (!upData.success) throw new Error(upData.error || 'Upload failed');
                     serverFilename = upData.filename;
                     item.serverFilename = serverFilename;
-                    if (upData.transcription) item.transcription = upData.transcription;
-                } else if (captionState.isCaptionAddActive && !item.transcription && !item.hasUserEditedSubtitles) {
-                    try {
-                        const trRes = await fetch('/api/transcribe', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ filename: serverFilename })
-                        });
-                        if (trRes.ok) {
-                            const trData = await trRes.json();
-                            if (trData.success) item.transcription = trData;
+                }
+
+                // 2. Ensure video is transcribed if caption add is active
+                if (captionState.isCaptionAddActive && !item.hasUserEditedSubtitles) {
+                    const hasValidCues = item.transcription && item.transcription.cues && item.transcription.cues.length > 0;
+                    if (!hasValidCues) {
+                        try {
+                            const trRes = await fetch('/api/transcribe', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ filename: serverFilename })
+                            });
+                            if (trRes.ok) {
+                                const trData = await trRes.json();
+                                if (trData.success) {
+                                    item.transcription = { ...trData, completed: true };
+                                }
+                            }
+                        } catch (te) {
+                            console.warn('Transcription fetch warning:', te);
                         }
-                    } catch (te) {
-                        console.warn('Transcription fetch warning:', te);
                     }
                 }
 
@@ -3614,17 +3609,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 setMonotonicItemPercent(item, 20);
 
-                // 2. Determine per-video cues:
+                // 3. Determine per-video cues:
                 let videoCues = [];
                 if (item.hasUserEditedSubtitles && item.customCues && item.customCues.length > 0) {
                     videoCues = item.customCues;
-                } else if (captionState.isCaptionAddActive && item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
+                } else if (item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
                     videoCues = item.transcription.cues;
+                } else if (captionState.cues && captionState.cues.length > 0) {
+                    videoCues = captionState.cues;
                 } else {
                     videoCues = [];
                 }
 
-                const shouldAddCaptions = captionState.isCaptionAddActive && (videoCues && videoCues.length > 0);
+                const shouldAddCaptions = captionState.isCaptionAddActive;
 
                 const procRes = await fetch('/api/process', {
                     method: 'POST',

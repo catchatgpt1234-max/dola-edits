@@ -75,6 +75,10 @@ def allowed_file(filename):
 def index():
     return render_template("index.html")
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 @app.route("/api/upload", methods=["POST"])
 def upload_video():
     if 'video' not in request.files:
@@ -97,7 +101,7 @@ def upload_video():
         auto_bbox = auto_detect_dola_watermark(save_path, meta)
 
         clean_name = f"dolaedits_clean_{unique_name.rsplit('.', 1)[0]}.mp4"
-        transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
+        transcription = None
         # Note: Heavy speech transcription is offloaded to /api/transcribe asynchronously
         # to ensure instant video upload and avoid gateway/server timeouts.
         if (request.form.get("transcribe_on_upload") == "true") and meta.get("has_audio"):
@@ -222,6 +226,16 @@ def start_processing():
         remove_watermark = data.get("remove_watermark", True)
         add_captions = data.get("add_captions", False)
         captions = data.get("captions", [])
+
+        # Server-side safety net: If captions requested but array is empty, auto-transcribe now!
+        if add_captions and not captions:
+            try:
+                trans_result = transcribe_video_speech(video_path)
+                if trans_result and trans_result.get("cues"):
+                    captions = trans_result["cues"]
+            except Exception as te:
+                print("Server-side transcription fallback error:", te)
+
         caption_style = data.get("caption_style", "classic")
         caption_size = data.get("caption_size", "md")
         caption_line_height = data.get("caption_line_height")

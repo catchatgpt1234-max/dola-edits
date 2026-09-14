@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="dolaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="45%" stop-color="#4facfe" />
+      <stop offset="100%" stop-color="#9d4edd" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#dolaGrad)" />
+  <g transform="translate(8, 8) scale(2)">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="#07090e" stroke="#07090e" stroke-width="0.8" stroke-linejoin="round" />
+  </g>
+</svg>
