@@ -457,6 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     updateSyncTimerUI(estSeconds);
                     if (captionTextInput) {
+                        captionTextInput.value = '';
                         captionTextInput.placeholder = `AI syncing voice (~${estSeconds}s)... (or type your own subtitles)`;
                     }
                     // Show buffering spinner on video center
@@ -481,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
 
                         if (transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
-                            if (captionTextInput && (!captionTextInput.value || captionTextInput.value.trim() === '')) {
+                            if (captionTextInput) {
                                 captionTextInput.value = transData.formatted_text;
                             }
                             captionState.cues = transData.cues;
