@@ -288,14 +288,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if 0 < gap < 0.4:
             cleaned_cues[i]["end"] = cleaned_cues[i + 1]["start"]
 
+    max_chars = max(24, int((width * 0.88) / max(1, p * 0.52)))
+
     for cue in cleaned_cues:
         clean_str = re.sub(r'[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]', '', cue["text"]).strip()
         sanitized_text = clean_str.replace("\\", "").strip()
         if not sanitized_text:
             continue
+        lines = wrap_caption_text(sanitized_text, max_chars)
+        valid_lines = [l.strip() for l in lines if l.strip()]
+        if not valid_lines:
+            continue
+        ass_text = r"\N".join(valid_lines)
         t_start = format_ass_time(cue["start"])
         t_end = format_ass_time(cue["end"])
-        events.append(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{sanitized_text}")
+        events.append(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{ass_text}")
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(events) + "\n")
@@ -699,19 +706,39 @@ def process_video(
                 wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags={scale_flag},setsar=1"
                 sub_w, sub_h = tw, th
 
-        # Build caption filter using high-fidelity TrueType drawtext matching web studio preview
+        # Build caption filter using high-fidelity ASS subtitles (native C-engine, ultra-low memory, fast)
+        # with seamless TrueType drawtext fallback
         cap_filter = ""
         if add_captions and captions:
-            cap_filter = build_caption_filters(
-                captions=captions,
-                width=sub_w if 'sub_w' in locals() else tw,
-                height=sub_h if 'sub_h' in locals() else th,
-                style_name=caption_style or "classic",
-                size_key=caption_size or "md",
-                line_height=caption_line_height,
-                pos_y=caption_pos_y,
-                temp_dir=temp_dir
-            )
+            try:
+                ass_path = create_ass_subtitles_file(
+                    captions=captions,
+                    width=sub_w if 'sub_w' in locals() else tw,
+                    height=sub_h if 'sub_h' in locals() else th,
+                    style_name=caption_style or "classic",
+                    size_key=caption_size or "md",
+                    line_height=caption_line_height,
+                    pos_y=caption_pos_y,
+                    temp_dir=temp_dir
+                )
+                if ass_path and os.path.exists(ass_path):
+                    escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
+                    cap_filter = f"subtitles='{escaped_ass}'"
+            except Exception as ae:
+                print("ASS subtitle filter preparation notice:", ae)
+                cap_filter = ""
+
+            if not cap_filter:
+                cap_filter = build_caption_filters(
+                    captions=captions,
+                    width=sub_w if 'sub_w' in locals() else tw,
+                    height=sub_h if 'sub_h' in locals() else th,
+                    style_name=caption_style or "classic",
+                    size_key=caption_size or "md",
+                    line_height=caption_line_height,
+                    pos_y=caption_pos_y,
+                    temp_dir=temp_dir
+                )
 
         # Combine filters
         if wm_filter and cap_filter:
@@ -773,7 +800,7 @@ def process_video(
         cmd = [
             FFMPEG_EXE, "-y",
             "-threads", "2",
-            "-filter_threads", "4",
+            "-filter_threads", "2",
             "-i", video_path,
             "-vf", vf_filter,
             *v_codec_args
@@ -831,12 +858,12 @@ def process_video(
 
             proc.wait()
 
-            # If primary encode failed, analyze output and execute safe fallbacks
+            # If primary encode failed, analyze output and execute safe fallbacks preserving captions
             if proc.returncode != 0:
                 recent_err = "\n".join(output_lines[-20:])
                 print("FFMPEG primary encode notice (returncode", proc.returncode, "): Last lines:\n", recent_err)
                 
-                # Check if subtitles filter failed (e.g. libass missing on Linux)
+                # Check alternative caption filter
                 dt_filter = ""
                 if add_captions and captions:
                     try:
@@ -867,6 +894,7 @@ def process_video(
                     "-i", video_path,
                     "-vf", retry_filter,
                     "-threads", "2",
+                    "-filter_threads", "1",
                     "-c:v", "libx264",
                     "-preset", "ultrafast",
                     "-crf", "20",
@@ -881,15 +909,7 @@ def process_video(
 
                 res_fb = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 if res_fb.returncode != 0:
-                    # Final safety fallback: clean watermark removal without captions
-                    if wm_filter and retry_filter != wm_filter:
-                        print("⚠️ Retrying fallback without captions...")
-                        cmd_fallback[5] = wm_filter
-                        res_fb2 = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                        if res_fb2.returncode != 0:
-                            raise RuntimeError(f"FFmpeg encode error: {res_fb2.stdout[-400:]}")
-                    else:
-                        raise RuntimeError(f"FFmpeg fallback error: {res_fb.stdout[-400:]}")
+                    raise RuntimeError(f"FFmpeg fallback encode error: {res_fb.stdout[-400:]}")
 
         except Exception as e:
             raise RuntimeError(f"Error processing video: {str(e)}")

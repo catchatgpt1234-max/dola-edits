@@ -2785,6 +2785,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function triggerSingleVideoDownload(item, quality) {
         if (!item || !item.taskId) return;
+        if (item._hasDownloaded) {
+            console.log(`[Bulk] Download already executed for ${item.name || item.taskId}, skipping duplicate.`);
+            return;
+        }
+        item._hasDownloaded = true;
         const q = quality || state.selectedQuality || '1080';
         const a = document.createElement('a');
         a.href = `/api/download/${item.taskId}?quality=${q}`;
@@ -2993,7 +2998,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     caption_style: captionState.style || 'classic',
                     caption_size: captionState.fontScale || 0.052,
                     caption_line_height: captionState.lineHeight || 1.16,
-                    caption_pos_y: captionState.posY || 0.85,
+                    caption_pos_y: (captionState.posY !== undefined && captionState.posY !== null) ? captionState.posY : 0.07,
                     quality: chosenQuality || state.selectedQuality || '1080'
                 })
             });
@@ -3003,41 +3008,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
             item.taskId = procData.task_id;
 
-            await new Promise((resolve, reject) => {
-                const pollTimer = setInterval(async () => {
-                    try {
-                        if (isBulkBatchAborted) {
-                            clearInterval(pollTimer);
-                            item.status = 'stopped';
-                            updateBulkItemRow(item);
-                            resolve();
-                            return;
-                        }
+            let isItemFinished = false;
+            while (!isItemFinished && !isBulkBatchAborted) {
+                await new Promise(r => setTimeout(r, 1000));
+                if (isBulkBatchAborted) {
+                    item.status = 'stopped';
+                    updateBulkItemRow(item);
+                    break;
+                }
 
-                        const statusRes = await fetch(`/api/status/${item.taskId}`);
-                        if (!statusRes.ok) throw new Error('Status check failed');
-                        const statusData = await statusRes.json();
+                try {
+                    const statusRes = await fetch(`/api/status/${item.taskId}`);
+                    if (!statusRes.ok) continue;
+                    const statusData = await statusRes.json();
 
-                        if (statusData.status === 'completed') {
-                            clearInterval(pollTimer);
-                            item.status = 'completed';
-                            item.percent = 100;
-                            item.downloadUrl = `/api/download/${item.taskId}?quality=${chosenQuality || state.selectedQuality || '1080'}`;
-                            updateBulkItemRow(item);
-                            resolve();
-                        } else if (statusData.status === 'error') {
-                            clearInterval(pollTimer);
-                            throw new Error(statusData.error || 'Watermark removal failed');
-                        } else {
-                            const rawPct = statusData.percent || 0;
-                            setMonotonicItemPercent(item, 20 + (rawPct * 0.79));
-                        }
-                    } catch (err) {
-                        clearInterval(pollTimer);
-                        reject(err);
+                    if (statusData.status === 'completed') {
+                        isItemFinished = true;
+                        item.status = 'completed';
+                        item.percent = 100;
+                        item.downloadUrl = `/api/download/${item.taskId}?quality=${chosenQuality || state.selectedQuality || '1080'}`;
+                        updateBulkItemRow(item);
+                        break;
+                    } else if (statusData.status === 'error') {
+                        isItemFinished = true;
+                        item.status = 'error';
+                        updateBulkItemRow(item);
+                        throw new Error(statusData.error || 'Watermark removal failed');
+                    } else {
+                        const rawPct = statusData.percent || 0;
+                        setMonotonicItemPercent(item, 20 + (rawPct * 0.79));
                     }
-                }, 250);
-            });
+                } catch (err) {
+                    if (isItemFinished) break;
+                    console.warn('Status poll error:', err);
+                }
+            }
 
         } catch (err) {
             console.error('Bulk item failed:', item.name, err);
@@ -3611,7 +3616,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     videoCues = item.customCues;
                 } else if (item.transcription && item.transcription.has_speech && item.transcription.cues && item.transcription.cues.length > 0) {
                     videoCues = item.transcription.cues;
-                } else if (captionState.cues && captionState.cues.length > 0) {
+                } else if (item === currentItem && captionState.cues && captionState.cues.length > 0) {
+                    videoCues = captionState.cues;
+                } else if (!item.transcription && captionState.cues && captionState.cues.length > 0) {
                     videoCues = captionState.cues;
                 } else {
                     videoCues = [];
@@ -3642,59 +3649,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.taskId = taskId;
 
                 // 3. Poll until this item completes, updating that video's individual progress line
-                await new Promise((resolve, reject) => {
-                    const pollInterval = setInterval(async () => {
-                        try {
-                            if (isBulkBatchAborted) {
-                                clearInterval(pollInterval);
-                                item.status = 'stopped';
-                                updateBulkItemRow(item);
-                                resolve();
-                                return;
-                            }
+                let isTaskFinished = false;
+                while (!isTaskFinished && !isBulkBatchAborted) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    if (isBulkBatchAborted) {
+                        item.status = 'stopped';
+                        updateBulkItemRow(item);
+                        break;
+                    }
 
-                            const statusRes = await fetch(`/api/status/${taskId}`);
-                            if (!statusRes.ok) return;
-                            const statusData = await statusRes.json();
+                    try {
+                        const statusRes = await fetch(`/api/status/${taskId}`);
+                        if (!statusRes.ok) continue;
+                        const statusData = await statusRes.json();
 
-                            if (statusData.status === 'completed') {
-                                clearInterval(pollInterval);
+                        if (statusData.status === 'completed') {
+                            isTaskFinished = true;
+                            if (!completedTaskIds.includes(taskId)) {
                                 completedTaskIds.push(taskId);
-                                item.status = 'completed';
-                                item.percent = 100;
-                                item.taskId = taskId;
-                                item.downloadUrl = `/api/download/${taskId}?quality=${qLabel}`;
-                                updateBulkItemRow(item);
-
-                                if (bulkSummaryTitle) {
-                                    bulkSummaryTitle.textContent = `Completed Video ${completedTaskIds.length} of ${totalItems} [${qName}]...`;
-                                }
-                                if (bulkSummaryStats) {
-                                    bulkSummaryStats.textContent = `Completed ${completedTaskIds.length} of ${totalItems}`;
-                                }
-                                if (bulkMasterFill) {
-                                    bulkMasterFill.style.width = `${Math.round((completedTaskIds.length / totalItems) * 100)}%`;
-                                }
-
-                                if (chosenFormat === 'single') {
-                                    triggerSingleVideoDownload(item, qLabel);
-                                }
-                                resolve();
-                            } else if (statusData.status === 'error') {
-                                clearInterval(pollInterval);
-                                item.status = 'error';
-                                updateBulkItemRow(item);
-                                reject(new Error(statusData.error || 'Render failed'));
-                            } else {
-                                const itemPct = statusData.percent || 0;
-                                setMonotonicItemPercent(item, 20 + (itemPct * 0.79));
                             }
-                        } catch (e) {
-                            clearInterval(pollInterval);
-                            reject(e);
+                            item.status = 'completed';
+                            item.percent = 100;
+                            item.taskId = taskId;
+                            item.downloadUrl = `/api/download/${taskId}?quality=${qLabel}`;
+                            updateBulkItemRow(item);
+
+                            if (bulkSummaryTitle) {
+                                bulkSummaryTitle.textContent = `Completed Video ${completedTaskIds.length} of ${totalItems} [${qName}]...`;
+                            }
+                            if (bulkSummaryStats) {
+                                bulkSummaryStats.textContent = `Completed ${completedTaskIds.length} of ${totalItems}`;
+                            }
+                            if (bulkMasterFill) {
+                                bulkMasterFill.style.width = `${Math.round((completedTaskIds.length / totalItems) * 100)}%`;
+                            }
+
+                            if (chosenFormat === 'single') {
+                                triggerSingleVideoDownload(item, qLabel);
+                            }
+                            break;
+                        } else if (statusData.status === 'error') {
+                            isTaskFinished = true;
+                            item.status = 'error';
+                            updateBulkItemRow(item);
+                            throw new Error(statusData.error || 'Render failed');
+                        } else {
+                            const itemPct = statusData.percent || 0;
+                            setMonotonicItemPercent(item, 20 + (itemPct * 0.79));
                         }
-                    }, 250);
-                });
+                    } catch (e) {
+                        if (isTaskFinished) break;
+                        console.warn('Batch task status poll notice:', e);
+                    }
+                }
             } catch (err) {
                 console.error(`Error processing batch video ${i + 1}:`, err);
                 item.status = 'error';
