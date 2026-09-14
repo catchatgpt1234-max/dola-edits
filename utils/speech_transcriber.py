@@ -13,16 +13,16 @@ logger = logging.getLogger(__name__)
 _whisper_model = None
 _whisper_model_size = None
 
-def get_whisper_model(model_size="base"):
+def get_whisper_model(model_size="tiny"):
     """
     Returns a singleton WhisperModel instance running locally on CPU.
-    Defaults to 'base' (int8) for high acoustic accuracy and zero hallucinations.
+    Defaults to 'tiny' (int8) for sub-second acoustic transcription on CPU.
     """
     global _whisper_model, _whisper_model_size
     if _whisper_model is not None and _whisper_model_size == model_size:
         return _whisper_model
     from faster_whisper import WhisperModel
-    for m_size in [model_size, "tiny"]:
+    for m_size in [model_size, "base"]:
         try:
             logger.info(f"Loading faster-whisper model ({m_size}) on CPU...")
             _whisper_model = WhisperModel(m_size, device="cpu", compute_type="int8")
@@ -232,6 +232,10 @@ def _transcribe_with_groq(audio_path, api_key=None):
                                 "word": w
                             })
                 return all_words, detected_lang
+            elif resp.status_code in (401, 403):
+                last_error = f"Groq {model_name} HTTP {resp.status_code}: {resp.text}"
+                logger.warning(last_error)
+                break
             else:
                 last_error = f"Groq {model_name} HTTP {resp.status_code}: {resp.text}"
                 logger.warning(last_error)
@@ -241,7 +245,7 @@ def _transcribe_with_groq(audio_path, api_key=None):
 
     raise RuntimeError(last_error or "Groq transcription failed.")
 
-def transcribe_video_speech(video_path, model_size="base"):
+def transcribe_video_speech(video_path, model_size="tiny"):
     """
     High-Precision AI Speech Transcription:
     1. Primary: Groq Cloud Whisper Large V3 (ultra-fast 0.5s response, 0% server CPU/RAM load).
@@ -335,8 +339,8 @@ def transcribe_video_speech(video_path, model_size="base"):
             if model is not None:
                 segments, info = model.transcribe(
                     audio_path,
-                    beam_size=3,
-                    best_of=2,
+                    beam_size=2,
+                    best_of=1,
                     temperature=0.0,
                     vad_filter=True,
                     vad_parameters=dict(
@@ -351,6 +355,23 @@ def transcribe_video_speech(video_path, model_size="base"):
                 )
                 all_words = _extract_words_from_segments(list(segments))
                 detected_lang = getattr(info, "language", None)
+
+                # If vad_filter removed everything (e.g. child voice, whisper, or speech over music), retry without vad
+                if not all_words:
+                    try:
+                        segments_retry, info_retry = model.transcribe(
+                            audio_path,
+                            beam_size=1,
+                            temperature=0.0,
+                            vad_filter=False,
+                            condition_on_previous_text=False,
+                            word_timestamps=True
+                        )
+                        all_words = _extract_words_from_segments(list(segments_retry))
+                        if not detected_lang:
+                            detected_lang = getattr(info_retry, "language", None)
+                    except Exception as ve:
+                        logger.warning(f"VAD fallback error: {ve}")
 
         # Filter out repeated words or out-of-range timestamps
         filtered_words = []

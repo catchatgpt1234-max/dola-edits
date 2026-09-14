@@ -901,23 +901,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Helper: If video currently playing is a burned video, switch back to clean video for live previewing tweaks
     function ensureLivePreviewMode() {
-        const isBurnedPlaying = state.isCurrentlyBurnedVideo || 
-            (state.burnedVideoUrl && sourceVideo && sourceVideo.src && sourceVideo.src.includes(state.burnedVideoUrl));
-        if (isBurnedPlaying) {
-            state.isCurrentlyBurnedVideo = false;
-            state.burnedVideoUrl = null;
-            const targetUrl = state.cleanVideoUrl || state.rawVideoUrl;
-            if (targetUrl && sourceVideo) {
-                const curTime = sourceVideo.currentTime || 0;
-                const wasPlaying = !sourceVideo.paused;
-                if (!sourceVideo.src.includes(targetUrl)) {
-                    sourceVideo.src = targetUrl;
-                    sourceVideo.currentTime = curTime;
-                    if (wasPlaying) sourceVideo.play().catch(() => {});
-                }
-            }
-            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+        state.isCurrentlyBurnedVideo = false;
+        state.burnedVideoUrl = null;
+        const targetUrl = state.cleanVideoUrl || state.rawVideoUrl;
+        if (targetUrl && sourceVideo && !sourceVideo.src.includes(targetUrl)) {
+            const curTime = sourceVideo.currentTime || 0;
+            const wasPlaying = !sourceVideo.paused;
+            sourceVideo.src = targetUrl;
+            sourceVideo.currentTime = curTime;
+            if (wasPlaying) sourceVideo.play().catch(() => {});
         }
+        if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
     }
 
     // Real-Time Caption Text Input Handler
@@ -1070,28 +1064,36 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (!captionState.isCaptionAddActive || captionState.cues.length === 0) {
+        if (!captionState.isCaptionAddActive) {
             overlay.classList.add('hidden');
             return;
         }
 
-        let activeCue = captionState.cues.find(c => currentTime >= c.start && currentTime <= c.end);
-        // When video is paused, show nearest cue or first cue so user can see and preview subtitle style in display!
-        if (!activeCue && targetVideo.paused && captionState.cues.length > 0) {
-            const nearestFuture = captionState.cues.find(c => c.start >= currentTime);
-            const nearestPast = [...captionState.cues].reverse().find(c => c.end <= currentTime);
-            if (nearestFuture && (nearestFuture.start - currentTime) < 2.0) {
-                activeCue = nearestFuture;
-            } else if (nearestPast && (currentTime - nearestPast.end) < 1.5) {
-                activeCue = nearestPast;
-            } else if (nearestFuture) {
-                activeCue = nearestFuture;
-            } else if (nearestPast) {
-                activeCue = nearestPast;
-            } else {
-                activeCue = captionState.cues[0];
+        let activeCue = null;
+        if (captionState.cues && captionState.cues.length > 0) {
+            activeCue = captionState.cues.find(c => currentTime >= c.start && currentTime <= c.end);
+            // When video is paused, show nearest cue or first cue so user can see and preview subtitle style in display!
+            if (!activeCue && targetVideo.paused) {
+                const nearestFuture = captionState.cues.find(c => c.start >= currentTime);
+                const nearestPast = [...captionState.cues].reverse().find(c => c.end <= currentTime);
+                if (nearestFuture && (nearestFuture.start - currentTime) < 2.0) {
+                    activeCue = nearestFuture;
+                } else if (nearestPast && (currentTime - nearestPast.end) < 1.5) {
+                    activeCue = nearestPast;
+                } else if (nearestFuture) {
+                    activeCue = nearestFuture;
+                } else if (nearestPast) {
+                    activeCue = nearestPast;
+                } else {
+                    activeCue = captionState.cues[0];
+                }
             }
+        } else if (state.isBulkStudioMode || document.body.classList.contains('studio-view-active')) {
+            // In Studio mode when cues are not yet available:
+            // Display live sample preview so user immediately sees what their chosen preset looks like!
+            activeCue = { text: "✨ Live Caption Preview ✨", start: 0, end: 999 };
         }
+
         if (!activeCue || !activeCue.text || !activeCue.text.trim()) {
             overlay.classList.add('hidden');
             return;
@@ -2231,6 +2233,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBulkQueue();
         switchMode('bulk');
 
+        state.isCurrentlyBurnedVideo = false;
+        state.burnedVideoUrl = null;
+
         // Step 1 / Step 2 export choice modals ONLY appear when Watermark Remove ONLY is active!
         // When Caption Add is active, open Bulk Studio with Video 1 immediately so user can style captions without delay!
         if (bulkQueue.length > 0 && !isBulkProcessing) {
@@ -3112,6 +3117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.isBulkStudioMode = true;
         state.currentBulkIndex = targetIdx;
         currentMode = 'bulk';
+        state.isCurrentlyBurnedVideo = false;
+        state.burnedVideoUrl = null;
         if (tabBulkMode) tabBulkMode.classList.add('active');
         if (tabSingleMode) tabSingleMode.classList.remove('active');
 
@@ -3197,6 +3204,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadBulkPreviewVideo(item) {
         if (!item || (!item.file && !item.cleanVideoUrl)) return;
         
+        state.isCurrentlyBurnedVideo = false;
+        state.burnedVideoUrl = null;
+        state.isBulkStudioMode = true;
+
         // Priority: When watermark removal is active, always use cleanVideoUrl so video player displays clean video!
         const activeSrc = (captionState.isWatermarkRemoveActive && item.cleanVideoUrl)
             ? item.cleanVideoUrl
@@ -3271,11 +3282,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 captionTextInput.placeholder = 'No speech detected in this video. You can type custom subtitles here...';
             }
             if (captionSpeechBadge) {
-                captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
+                captionSpeechBadge.textContent = '🔇 No Speech Detected (Live Style Preview)';
                 captionSpeechBadge.classList.remove('hidden');
             }
-            if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-            updateLiveSubtitleOverlay(0);
+            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+            updateLiveCaption(sourceVideo ? (sourceVideo.currentTime || 0) : 0, sourceVideo);
             const trOverlay = document.getElementById('transcribeBufferingOverlay');
             if (trOverlay) trOverlay.classList.add('hidden');
             return;
@@ -3348,9 +3359,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 captionTextInput.placeholder = 'No speech detected in this video.';
                             }
                             if (captionSpeechBadge) {
-                                captionSpeechBadge.textContent = '🔇 No Speech Detected (Video has no voice)';
+                                captionSpeechBadge.textContent = '🔇 No Speech Detected (Live Style Preview)';
                                 captionSpeechBadge.classList.remove('hidden');
                             }
+                            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+                            updateLiveCaption(sourceVideo ? (sourceVideo.currentTime || 0) : 0, sourceVideo);
                         }
                     }
                 }

@@ -618,7 +618,10 @@
                     <div class="caption-controls-grid">
                         <!-- Preset Styles -->
                         <div class="caption-ctrl-group">
-                            <label class="ctrl-label">Style Preset</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label class="ctrl-label" style="margin: 0;">Style Preset</label>
+                                <span id="captionSpeechBadge" class="caption-speech-badge hidden" style="font-size: 0.72rem; font-weight: 700; padding: 2px 10px; border-radius: 9999px; background: rgba(0, 242, 254, 0.12); border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; letter-spacing: 0.02em;"></span>
+                            </div>
                             <div class="caption-style-chips" id="captionStyleChips">
                                 <button type="button" class="style-chip active" data-style="classic" title="Classic white text with black outline">
                                     <span class="chip-preview-box style-classic-icon">Aa</span>
@@ -738,7 +741,6 @@
                     <div class="caption-editor-block" style="display: none !important;">
                         <div class="caption-editor-header" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                             <label class="ctrl-label" style="margin-bottom: 0;">🎙️ Video Speech & Captions (Auto-Synced with Voice)</label>
-                            <span id="captionSpeechBadge" class="caption-speech-badge hidden" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #60a5fa; letter-spacing: 0.02em;"></span>
                         </div>
                         <textarea id="captionTextInput" class="caption-inline-textarea" rows="2" placeholder="Type captions here..."></textarea>
                     </div>
@@ -1297,6 +1299,6 @@
     <!-- Adsterra Popunder / Direct Network Script -->
     <script src="https://pl31337806.profitableratecpmnetwork.com/e6/34/72/e6347272914943e43ef8ea33ab8fb587.js"></script>
 
-    <script src="/static/js/app.js?v=96.0"></script>
+    <script src="/static/js/app.js?v=98.0"></script>
 </body>
 </html>

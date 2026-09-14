@@ -722,8 +722,8 @@ def process_video(
                     temp_dir=temp_dir
                 )
                 if ass_path and os.path.exists(ass_path):
-                    escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
-                    cap_filter = f"subtitles='{escaped_ass}'"
+                    escaped_ass = ass_path.replace("\\", "/").replace(":", "\\\\:")
+                    cap_filter = f"subtitles={escaped_ass}"
             except Exception as ae:
                 print("ASS subtitle filter preparation notice:", ae)
                 cap_filter = ""
