@@ -3352,11 +3352,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.log('Bulk preview video transcription error:', err);
-        } finally {
-            item.isTranscribing = false;
-            if (trOverlay) trOverlay.classList.add('hidden');
-        }
-            console.log('Bulk preview video setup notice:', err);
             captionState.cues = [];
             renderCuesList();
             if (captionTextInput) {
@@ -3370,6 +3365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
         } finally {
             item.isTranscribing = false;
+            if (trOverlay) trOverlay.classList.add('hidden');
             if (btnAutoTranscribeVoice) btnAutoTranscribeVoice.classList.remove('is-loading');
         }
     }
