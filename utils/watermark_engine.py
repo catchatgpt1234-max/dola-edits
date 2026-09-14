@@ -71,97 +71,97 @@ CAPTION_STYLES = {
     "classic": {
         "id": "classic",
         "label": "Classic Outline",
-        "dt": lambda border_w, p: f"fontcolor=white:borderw={border_w}:bordercolor=black@0.95"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.78:boxborderw={max(6, round(p*0.28))}:borderw={border_w}:bordercolor=black@0.90"
     },
     "boxed": {
         "id": "boxed",
         "label": "Boxed",
-        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.72:boxborderw={max(4, round(p * 0.20))}"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.80:boxborderw={max(6, round(p*0.30))}"
     },
     "yellow": {
         "id": "yellow",
         "label": "Yellow Classic",
-        "dt": lambda border_w, p: f"fontcolor=0xFFD400:borderw={border_w}:bordercolor=black@0.95"
+        "dt": lambda border_w, p: f"fontcolor=0xFFD400:box=1:boxcolor=black@0.78:boxborderw={max(6, round(p*0.28))}:borderw={border_w}:bordercolor=black@0.90"
     },
     "mrbeast": {
         "id": "mrbeast",
         "label": "MrBeast Bold",
-        "dt": lambda border_w, p: f"fontcolor=white:borderw={border_w + 3}:bordercolor=black:shadowcolor=black@0.85:shadowx={max(2, round(p*0.04))}:shadowy={max(2, round(p*0.04))}"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.85:boxborderw={max(6, round(p*0.30))}:borderw={border_w + 3}:bordercolor=black"
     },
     "hormozi": {
         "id": "hormozi",
         "label": "Hormozi Green",
-        "dt": lambda border_w, p: f"fontcolor=0x00FF66:borderw={border_w + 2}:bordercolor=black:shadowcolor=black@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0x00FF66:box=1:boxcolor=black@0.85:boxborderw={max(6, round(p*0.30))}:borderw={border_w + 2}:bordercolor=black"
     },
     "cyberpunk": {
         "id": "cyberpunk",
         "label": "Cyberpunk",
-        "dt": lambda border_w, p: f"fontcolor=0xFF2A85:borderw={border_w + 1}:bordercolor=black:shadowcolor=0x8A2BE2@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xFF2A85:box=1:boxcolor=0x180028@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 1}:bordercolor=0x8A2BE2"
     },
     "flame": {
         "id": "flame",
         "label": "Fire Red",
-        "dt": lambda border_w, p: f"fontcolor=0xFF3B30:borderw={border_w + 2}:bordercolor=black:shadowcolor=0xFF6600@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xFF3B30:box=1:boxcolor=black@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=0xFF6600"
     },
     "gold": {
         "id": "gold",
         "label": "Luxury Gold",
-        "dt": lambda border_w, p: f"fontcolor=0xFFD700:borderw={border_w + 2}:bordercolor=black:shadowcolor=black@0.9:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xFFD700:box=1:boxcolor=black@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=black"
     },
     "blue": {
         "id": "blue",
         "label": "Cyan Pop",
-        "dt": lambda border_w, p: f"fontcolor=0x00E5FF:borderw={border_w + 2}:bordercolor=black:shadowcolor=0x004488@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0x00E5FF:box=1:boxcolor=0x001A2C@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=black"
     },
     "neon": {
         "id": "neon",
         "label": "Neon Glow",
-        "dt": lambda border_w, p: f"fontcolor=0x00FFCC:borderw={border_w + 1}:bordercolor=black@0.95"
+        "dt": lambda border_w, p: f"fontcolor=0x00FFCC:box=1:boxcolor=0x002222@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 1}:bordercolor=0x00FFCC"
     },
     "glass": {
         "id": "glass",
         "label": "Glass Bar",
-        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x121622@0.65:boxborderw={max(4, round(p * 0.22))}"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x121622@0.72:boxborderw={max(6, round(p*0.28))}"
     },
     "aliabdaal": {
         "id": "aliabdaal",
         "label": "Ali Abdaal Clean",
-        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.68:boxborderw={max(5, round(p * 0.24))}"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=black@0.75:boxborderw={max(6, round(p*0.28))}"
     },
     "devinjatho": {
         "id": "devinjatho",
         "label": "Devin Jatho Impact",
-        "dt": lambda border_w, p: f"fontcolor=0xFFE600:box=1:boxcolor=black@0.85:boxborderw={max(5, round(p * 0.26))}:borderw={max(1, border_w-1)}:bordercolor=black"
+        "dt": lambda border_w, p: f"fontcolor=0xFFE600:box=1:boxcolor=black@0.88:boxborderw={max(6, round(p*0.30))}:borderw=1:bordercolor=0xFFE600"
     },
     "karaoke": {
         "id": "karaoke",
         "label": "Karaoke Pop",
-        "dt": lambda border_w, p: f"fontcolor=0x80FF20:borderw={border_w + 2}:bordercolor=black:shadowcolor=0xFFD700@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0x80FF20:box=1:boxcolor=black@0.80:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=black"
     },
     "cinematic": {
         "id": "cinematic",
         "label": "Cinematic Clean",
-        "dt": lambda border_w, p: f"fontcolor=0xF5F5F7:borderw=1:bordercolor=black@0.80:shadowcolor=black@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xF5F5F7:box=1:boxcolor=black@0.75:boxborderw={max(6, round(p*0.28))}:borderw=1:bordercolor=black@0.80"
     },
     "synthwave": {
         "id": "synthwave",
         "label": "Synthwave Purple",
-        "dt": lambda border_w, p: f"fontcolor=0x9933FF:borderw={border_w + 2}:bordercolor=black:shadowcolor=0xFF007F@0.85:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0x9933FF:box=1:boxcolor=0x220033@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=0xFF007F"
     },
     "frost": {
         "id": "frost",
         "label": "Icy Frost",
-        "dt": lambda border_w, p: f"fontcolor=0xD0FFFF:borderw={border_w + 2}:bordercolor=black:shadowcolor=0x002288@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xD0FFFF:box=1:boxcolor=0x001830@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=0x004488"
     },
     "velvet": {
         "id": "velvet",
         "label": "Ruby Velvet",
-        "dt": lambda border_w, p: f"fontcolor=0xE62222:borderw={border_w + 2}:bordercolor=black:shadowcolor=black@0.90:shadowx={max(2, round(p*0.03))}:shadowy={max(2, round(p*0.03))}"
+        "dt": lambda border_w, p: f"fontcolor=0xE62222:box=1:boxcolor=black@0.85:boxborderw={max(6, round(p*0.28))}:borderw={border_w + 2}:bordercolor=black"
     },
     "purplepop": {
         "id": "purplepop",
         "label": "Purple Box Pop",
-        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x6500C5@0.92:boxborderw={max(6, round(p * 0.28))}:borderw={max(1, border_w - 1)}:bordercolor=black"
+        "dt": lambda border_w, p: f"fontcolor=white:box=1:boxcolor=0x6500C5@0.92:boxborderw={max(6, round(p*0.30))}:borderw=1:bordercolor=black"
     }
 }
 
@@ -320,21 +320,21 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
 
     if aspect_ratio < 0.85:
         # Vertical Reels / Shorts (9:16): base font size on width so 3-4 word cues fit cleanly on 1 line
-        p = max(16, round(width * 0.066 * scale_ratio))
+        p = max(24, round(width * 0.058 * scale_ratio))
     else:
         # Horizontal / Square video: base font size on height
-        p = max(16, round(height * 0.052 * scale_ratio))
+        p = max(24, round(height * 0.052 * scale_ratio))
 
     border_w = max(2, round(p / 9))
     style_obj = CAPTION_STYLES.get(style_name, CAPTION_STYLES["classic"])
     dt_style = style_obj["dt"](border_w, p)
 
-    default_spacing = 1.35 if style_name in ("boxed", "glass") else 1.16
+    default_spacing = 1.25
     lh = float(line_height) if line_height is not None and float(line_height) > 0 else default_spacing
-    bottom_margin_ratio = float(pos_y) if pos_y is not None and float(pos_y) > 0 else 0.07
+    bottom_margin_ratio = float(pos_y) if pos_y is not None and float(pos_y) > 0 else 0.10
 
     # max_chars allows full 3-4 word phrases (typically 18-28 chars) to stay on 1 line
-    max_chars = max(24, int((width * 0.88) / max(1, p * 0.52)))
+    max_chars = max(26, int((width * 0.90) / max(1, p * 0.52)))
     escaped_font = CAPTION_FONT_PATH.replace("\\", "/").replace(":", "\\:")
 
     filters = []
@@ -389,7 +389,7 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
                 tf.write(sanitized_text)
 
             escaped_txt_path = txt_path.replace("\\", "/").replace(":", "\\:")
-            box_extra = round(p * 0.20) if style_name in ("boxed", "glass") else 0
+            box_extra = max(6, round(p * 0.28))
             y_pos = round(height - (height * bottom_margin_ratio) - ((total_lines - line_idx) * p * lh) - box_extra)
             y_pos = max(10, min(height - p - 10, y_pos))
 
@@ -639,7 +639,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 1280
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 1440, 2560  # Ultra HD 2.5K (high speed, safe memory, 100+ fps)
+            tw, th = 2160, 3840  # True 4K Ultra HD
         else:
             tw, th = 1080, 1920
     elif aspect_ratio > 1.3:
@@ -647,7 +647,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 1280, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2560, 1440
+            tw, th = 3840, 2160  # True 4K Ultra HD
         else:
             tw, th = 1920, 1080
     else:
@@ -655,9 +655,11 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 1440, 1440
+            tw, th = 2160, 2160  # True 4K Ultra HD
         else:
             tw, th = 1080, 1080
+
+    scale_flag = "lanczos" if q_str in ("4k", "2160", "2160p") else "bicubic"
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Build watermark removal filter
@@ -690,31 +692,12 @@ def process_video(
                 wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},setsar=1"
                 sub_w, sub_h = crop_window_w, crop_window_h
             else:
-                wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags=fast_bilinear,setsar=1"
+                wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags={scale_flag},setsar=1"
                 sub_w, sub_h = tw, th
 
-        # Build caption filter using high-speed ASS subtitles (runs at 80+ fps vs 0.8 fps drawtext)
+        # Build caption filter using high-fidelity TrueType drawtext matching web studio preview
         cap_filter = ""
         if add_captions and captions:
-            try:
-                ass_path = create_ass_subtitles_file(
-                    captions=captions,
-                    width=sub_w if 'sub_w' in locals() else tw,
-                    height=sub_h if 'sub_h' in locals() else th,
-                    style_name=caption_style or "classic",
-                    size_key=caption_size or "md",
-                    line_height=caption_line_height,
-                    pos_y=caption_pos_y,
-                    temp_dir=temp_dir
-                )
-                if ass_path and os.path.exists(ass_path):
-                    escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
-                    cap_filter = f"subtitles='{escaped_ass}'"
-            except Exception as ae:
-                print("ASS subtitle generation notice:", ae)
-
-        # Fallback to drawtext if ASS subtitle generation was not used
-        if add_captions and captions and not cap_filter:
             cap_filter = build_caption_filters(
                 captions=captions,
                 width=sub_w if 'sub_w' in locals() else tw,
@@ -732,21 +715,56 @@ def process_video(
         elif wm_filter:
             vf_filter = wm_filter
         elif cap_filter:
-            vf_filter = f"scale={tw}:{th}:flags=fast_bilinear,setsar=1,{cap_filter}"
+            vf_filter = f"scale={tw}:{th}:flags={scale_flag},setsar=1,{cap_filter}"
         else:
             vf_filter = "null"
 
-        # Encoder selection: multithreaded ultrafast zerolatency libx264 with hardware stream copy
-        v_codec_args = ["-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0", "-crf", "23", "-pix_fmt", "yuv420p"]
-        if getattr(process_video, "_nvenc_supported", None) is None:
-            try:
-                chk = subprocess.run([FFMPEG_EXE, "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.05", "-c:v", "h264_nvenc", "-f", "null", "-"], capture_output=True)
-                process_video._nvenc_supported = (chk.returncode == 0)
-            except Exception:
-                process_video._nvenc_supported = False
-
-        if getattr(process_video, "_nvenc_supported", False):
-            v_codec_args = ["-c:v", "h264_nvenc", "-preset", "p3", "-cq", "19", "-pix_fmt", "yuv420p"]
+        # Encoder selection with bitrate control: 4K outputs 30-45 MB+ for 15s videos
+        if q_str in ("4k", "2160", "2160p"):
+            v_codec_args = [
+                "-threads", "0",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-b:v", "25M",
+                "-maxrate", "35M",
+                "-bufsize", "50M",
+                "-crf", "14",
+                "-pix_fmt", "yuv420p"
+            ]
+            a_codec_args = ["-c:a", "aac", "-b:a", "320k"]
+        elif q_str in ("1080", "1080p"):
+            v_codec_args = [
+                "-threads", "0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-b:v", "8M",
+                "-maxrate", "12M",
+                "-bufsize", "16M",
+                "-crf", "18",
+                "-pix_fmt", "yuv420p"
+            ]
+            a_codec_args = ["-c:a", "aac", "-b:a", "256k"]
+        elif q_str in ("720", "720p"):
+            v_codec_args = [
+                "-threads", "0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-b:v", "3.5M",
+                "-maxrate", "5M",
+                "-bufsize", "8M",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p"
+            ]
+            a_codec_args = ["-c:a", "aac", "-b:a", "192k"]
+        else:
+            v_codec_args = [
+                "-threads", "0",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "17",
+                "-pix_fmt", "yuv420p"
+            ]
+            a_codec_args = ["-c:a", "aac", "-b:a", "320k"]
 
         cmd = [
             FFMPEG_EXE, "-y",
@@ -758,7 +776,7 @@ def process_video(
         ]
 
         if has_audio:
-            cmd.extend(["-c:a", "copy"])
+            cmd.extend(a_codec_args)
         else:
             cmd.extend(["-an"])
 

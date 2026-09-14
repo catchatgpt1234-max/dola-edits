@@ -362,34 +362,38 @@ def download_cleaned(task_id):
 
 @app.route("/api/download-clean/<filename>", methods=["GET"])
 def download_clean_file(filename):
-    if not filename.startswith("dolaedits_clean_"):
-        clean_name = f"dolaedits_clean_{filename.rsplit('.', 1)[0]}.mp4"
-    else:
-        clean_name = filename
+    quality = request.args.get("quality", "1080").lower().strip()
+    q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
 
+    base_no_ext = filename.replace("dolaedits_clean_", "").rsplit('.', 1)[0]
+    clean_name = f"dolaedits_clean_{q_label}_{base_no_ext}.mp4"
     clean_path = os.path.join(OUTPUT_DIR, clean_name)
+
     if not os.path.exists(clean_path) or os.path.getsize(clean_path) < 1000:
-        # Search disk for any existing matching output
-        base_no_ext = filename.rsplit('.', 1)[0]
-        found = False
-        for f in os.listdir(OUTPUT_DIR):
-            if base_no_ext in f and f.endswith(".mp4") and os.path.getsize(os.path.join(OUTPUT_DIR, f)) > 1000:
-                clean_path = os.path.join(OUTPUT_DIR, f)
-                found = True
-                break
-        
-        if not found:
-            raw_cand = os.path.join(UPLOAD_DIR, filename)
+        generic_name = f"dolaedits_clean_{base_no_ext}.mp4"
+        generic_path = os.path.join(OUTPUT_DIR, generic_name)
+        if q_label != "4k" and os.path.exists(generic_path) and os.path.getsize(generic_path) > 1000:
+            clean_path = generic_path
+        else:
+            raw_cand = os.path.join(UPLOAD_DIR, filename if not filename.startswith("dolaedits_clean_") else f"{base_no_ext}.mp4")
+            if not os.path.exists(raw_cand):
+                for f in os.listdir(UPLOAD_DIR):
+                    if base_no_ext in f:
+                        raw_cand = os.path.join(UPLOAD_DIR, f)
+                        break
             if os.path.exists(raw_cand):
                 meta = get_video_metadata(raw_cand)
                 auto_bbox = auto_detect_dola_watermark(raw_cand, meta)
-                process_video(video_path=raw_cand, output_path=clean_path, bbox=auto_bbox, method="crop", remove_watermark=True)
+                process_video(video_path=raw_cand, output_path=clean_path, bbox=auto_bbox, method="crop", remove_watermark=True, target_quality=q_label)
+            elif os.path.exists(generic_path) and os.path.getsize(generic_path) > 1000:
+                if q_label == "4k":
+                    process_video(video_path=generic_path, output_path=clean_path, remove_watermark=False, target_quality="4k")
+                else:
+                    clean_path = generic_path
             else:
                 return jsonify({"error": "Clean file not ready"}), 404
 
-    quality = request.args.get("quality", "1080").lower().strip()
-    q_label = "original" if quality in ("original", "source") else ("4k" if quality in ("4k", "2160", "2160p") else ("720p" if "720" in quality else "1080p"))
-    download_name = f"dolaedits_clean_{q_label}_{clean_name[:12]}.mp4"
+    download_name = f"dolaedits_clean_{q_label}_{base_no_ext[:12]}.mp4"
 
     return send_file(
         clean_path,
