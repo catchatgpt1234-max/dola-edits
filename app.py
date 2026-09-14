@@ -98,8 +98,9 @@ def upload_video():
 
         clean_name = f"dolaedits_clean_{unique_name.rsplit('.', 1)[0]}.mp4"
         transcription = {"has_speech": False, "cues": [], "formatted_text": ""}
-        skip_transcription = (request.form.get("skip_transcription") == "true") or (request.headers.get("X-Skip-Transcription") == "true")
-        if not skip_transcription and meta.get("has_audio"):
+        # Note: Heavy speech transcription is offloaded to /api/transcribe asynchronously
+        # to ensure instant video upload and avoid gateway/server timeouts.
+        if (request.form.get("transcribe_on_upload") == "true") and meta.get("has_audio"):
             try:
                 transcription = transcribe_video_speech(save_path)
             except Exception as te:

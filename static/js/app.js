@@ -255,9 +255,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const formData = new FormData();
         formData.append('video', file);
+        formData.append('skip_transcription', 'true');
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
+        xhr.timeout = 180000; // 3 minutes timeout limit for high-res videos
 
         // Real upload progress with percentage and timer
         xhr.upload.onprogress = (e) => {
@@ -297,12 +299,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        xhr.ontimeout = () => {
+            if (uploadTimerInterval) clearInterval(uploadTimerInterval);
+            if (uploadAnalysisInterval) clearInterval(uploadAnalysisInterval);
+            if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
+            if (uploadCard) uploadCard.classList.remove('hidden');
+            alert('Upload timed out. Please check your internet connection and try again.');
+        };
+
         xhr.onerror = () => {
             if (uploadTimerInterval) clearInterval(uploadTimerInterval);
             if (uploadAnalysisInterval) clearInterval(uploadAnalysisInterval);
             if (uploadProgressModal) uploadProgressModal.classList.add('hidden');
             if (uploadCard) uploadCard.classList.remove('hidden');
-            alert('Upload network error. Please try again.');
+            alert('Upload network error. Please check your internet connection and try again.');
         };
 
         xhr.send(formData);
