@@ -2842,7 +2842,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const totalItems = pendingItems.length;
         let completedCount = 0;
-        const CONCURRENCY = 3;
+        const CONCURRENCY = 1;
         let queueIdx = 0;
 
         async function bulkWorker() {
@@ -3702,8 +3702,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Parallel Concurrent Worker Pool (processes 3 videos simultaneously for maximum speed)
-        const CONCURRENCY = 3;
+        // Sequential Worker Queue (processes 1 video at a time for 100% stability and zero memory crashes)
+        const CONCURRENCY = 1;
         let queueIdx = 0;
 
         async function worker() {

@@ -362,6 +362,9 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
         if 0 < gap < 0.4:
             cleaned_cues[i]["end"] = cleaned_cues[i + 1]["start"]
 
+    if not temp_dir:
+        temp_dir = tempfile.gettempdir()
+
     for cue in cleaned_cues:
         text = cue["text"]
         start = cue["start"]
@@ -393,8 +396,9 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
             y_pos = round(height - (height * bottom_margin_ratio) - ((total_lines - line_idx) * p * lh) - box_extra)
             y_pos = max(10, min(height - p - 10, y_pos))
 
+            font_clause = f"fontfile='{escaped_font}':" if os.path.exists(CAPTION_FONT_PATH) else ""
             drawtext_str = (
-                f"drawtext=fontfile='{escaped_font}':textfile='{escaped_txt_path}':"
+                f"drawtext={font_clause}textfile='{escaped_txt_path}':"
                 f"{dt_style}:fontsize={p}:x=(w-text_w)/2:y={y_pos}:"
                 f"enable='between(t,{start:.3f},{end:.3f})'"
             )
@@ -639,7 +643,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 1280
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 3840  # True 4K Ultra HD
+            tw, th = 1440, 2560  # Ultra HD 2.5K (high speed, 100% safe memory for cloud hosts)
         else:
             tw, th = 1080, 1920
     elif aspect_ratio > 1.3:
@@ -647,7 +651,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 1280, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 3840, 2160  # True 4K Ultra HD
+            tw, th = 2560, 1440  # Ultra HD 2.5K
         else:
             tw, th = 1920, 1080
     else:
@@ -655,7 +659,7 @@ def process_video(
         if q_str in ("720", "720p"):
             tw, th = 720, 720
         elif q_str in ("4k", "2160", "2160p"):
-            tw, th = 2160, 2160  # True 4K Ultra HD
+            tw, th = 1440, 1440  # Ultra HD 2.5K
         else:
             tw, th = 1080, 1080
 
@@ -722,19 +726,19 @@ def process_video(
         # Encoder selection with bitrate control: 4K outputs 30-45 MB+ for 15s videos
         if q_str in ("4k", "2160", "2160p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", "2",
                 "-c:v", "libx264",
-                "-preset", "medium",
-                "-b:v", "25M",
-                "-maxrate", "35M",
-                "-bufsize", "50M",
-                "-crf", "14",
+                "-preset", "fast",
+                "-b:v", "20M",
+                "-maxrate", "28M",
+                "-bufsize", "40M",
+                "-crf", "15",
                 "-pix_fmt", "yuv420p"
             ]
             a_codec_args = ["-c:a", "aac", "-b:a", "320k"]
         elif q_str in ("1080", "1080p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", "2",
                 "-c:v", "libx264",
                 "-preset", "fast",
                 "-b:v", "8M",
@@ -746,7 +750,7 @@ def process_video(
             a_codec_args = ["-c:a", "aac", "-b:a", "256k"]
         elif q_str in ("720", "720p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", "2",
                 "-c:v", "libx264",
                 "-preset", "fast",
                 "-b:v", "3.5M",
@@ -758,7 +762,7 @@ def process_video(
             a_codec_args = ["-c:a", "aac", "-b:a", "192k"]
         else:
             v_codec_args = [
-                "-threads", "0",
+                "-threads", "2",
                 "-c:v", "libx264",
                 "-preset", "medium",
                 "-crf", "17",
@@ -768,7 +772,7 @@ def process_video(
 
         cmd = [
             FFMPEG_EXE, "-y",
-            "-threads", "0",
+            "-threads", "2",
             "-filter_threads", "4",
             "-i", video_path,
             "-vf", vf_filter,
@@ -880,7 +884,7 @@ def process_video(
                     # Final safety fallback: clean watermark removal without captions
                     if wm_filter and retry_filter != wm_filter:
                         print("⚠️ Retrying fallback without captions...")
-                        cmd_fallback[4] = wm_filter
+                        cmd_fallback[5] = wm_filter
                         res_fb2 = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                         if res_fb2.returncode != 0:
                             raise RuntimeError(f"FFmpeg encode error: {res_fb2.stdout[-400:]}")
