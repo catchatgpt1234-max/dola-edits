@@ -6039,5 +6039,116 @@ body.studio-view-active .features-section,
     100% { transform: scale(1.22); opacity: 1; }
 }
 
+/* ============================================================
+   Adsterra Ad Placement Styling (Native Banner & Sidebars)
+============================================================ */
 
+/* Horizontal Bottom Native Banner */
+.ad-native-section {
+    width: 100%;
+    max-width: 1200px;
+    margin: 2.5rem auto 1.5rem auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 15;
+}
 
+.ad-native-wrapper {
+    width: 100%;
+    min-height: 90px;
+    background: rgba(14, 18, 28, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 1.25rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.ad-label {
+    align-self: flex-start;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-subtle, #64748b);
+    margin-bottom: 0.6rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+}
+
+/* Left & Right Vertical Sticky Banners (160x300 / 160x600) */
+.ad-sidebar {
+    display: none; /* hidden on small screens / mobile by default */
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 164px;
+    z-index: 90;
+    pointer-events: auto;
+}
+
+.ad-sidebar-left {
+    left: 12px;
+}
+
+.ad-sidebar-right {
+    right: 12px;
+}
+
+.ad-sidebar-inner {
+    background: rgba(14, 18, 28, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 6px 2px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.ad-side-tag {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-subtle, #64748b);
+    margin-bottom: 4px;
+    font-weight: 700;
+    opacity: 0.75;
+}
+
+/* Only display sticky vertical sidebars when screen is wide enough so it never covers main content */
+@media (min-width: 1750px) {
+    .ad-sidebar {
+        display: block;
+    }
+}
+
+@media (max-width: 1749px) and (min-width: 1540px) {
+    .main-content {
+        max-width: 1180px;
+    }
+    .ad-sidebar {
+        display: block;
+    }
+    .ad-sidebar-left {
+        left: 6px;
+    }
+    .ad-sidebar-right {
+        right: 6px;
+    }
+}
