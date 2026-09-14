@@ -335,6 +335,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function loadVideoIntoWorkspace(data) {
+        // Enforce Single Video Mode and clean any remnant bulk states
+        currentMode = 'single';
+        state.isBulkStudioMode = false;
+        state.currentBulkIndex = null;
+        bulkQueue = [];
+        if (tabSingleMode) tabSingleMode.classList.add('active');
+        if (tabBulkMode) tabBulkMode.classList.remove('active');
+        if (bulkStudioBatchPill) bulkStudioBatchPill.classList.add('hidden');
+        if (videoInfoInline) videoInfoInline.classList.remove('hidden');
+        if (btnBackText) btnBackText.textContent = 'Upload Another Video';
+        if (studioBulkFormatBar) studioBulkFormatBar.classList.add('hidden');
+        if (btnCaptionEditText) btnCaptionEditText.textContent = 'Download Clean Video';
+
         state.currentFilename = data.filename;
         state.videoMeta = data.metadata;
         state.autoBbox = data.auto_bbox;
@@ -1456,7 +1469,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Caption Section: "⬇ Download (Apply Captions, Render & Download Video)"
     if (btnCaptionEditCombined) {
         btnCaptionEditCombined.addEventListener('click', () => {
-            if (state.isBulkStudioMode) {
+            if (state.isBulkStudioMode && currentMode === 'bulk' && typeof bulkQueue !== 'undefined' && bulkQueue.length > 0) {
                 executeBulkStudioBatchProcessing();
                 return;
             }
@@ -1464,10 +1477,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const duration = (state.videoMeta && state.videoMeta.duration) || 10;
             if ((!captionState.cues || captionState.cues.length === 0) && captionTextInput && captionTextInput.value.trim()) {
                 captionState.cues = parseSubtitlesText(captionTextInput.value.trim(), duration);
-            }
-            if (!captionState.cues || captionState.cues.length === 0) {
-                alert('AI is still transcribing voice or no speech was detected in this video. Please wait a few seconds or try again.');
-                return;
             }
 
             // If video is already rendered with current captions, trigger immediate download!
@@ -1532,14 +1541,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (processBufferingBadgeText) {
                         processBufferingBadgeText.textContent = task.percent >= 90 ? '⚡ Buffering & Finalizing Audio...' : '⚡ Buffering & AI Processing...';
                     }
-                    const displayFps = (task.fps > 1.0) ? `${task.fps}` : (task.current_frame > 5 ? `${task.fps}` : 'Starting...');
+                    const displayPct = (task.percent > 0) ? task.percent : Math.min(12, Math.floor(elapsedSec * 3) + 2);
                     updateProgressUI(
-                        task.percent,
+                        displayPct,
                         task.current_frame,
                         task.total_frames,
                         displayFps,
                         etaText,
-                        task.percent >= 90 ? 'Finalizing audio & video master...' : 'Permanently eliminating Dola watermark...'
+                        task.percent >= 90 ? 'Finalizing audio & video master...' : (task.percent > 0 ? 'Permanently eliminating Dola watermark...' : 'Initializing AI render engine...')
                     );
                 } else if (task.status === 'completed') {
                     clearInterval(state.pollInterval);
@@ -2105,12 +2114,18 @@ document.addEventListener('DOMContentLoaded', () => {
         currentMode = mode;
         if (mode === 'single') {
             state.isBulkStudioMode = false;
+            state.currentBulkIndex = null;
             if (tabSingleMode) tabSingleMode.classList.add('active');
             if (tabBulkMode) tabBulkMode.classList.remove('active');
             if (bulkUploadCard) bulkUploadCard.classList.add('hidden');
             if (bulkQueueCard) bulkQueueCard.classList.add('hidden');
             if (bulkDownloadFormatModal) bulkDownloadFormatModal.classList.add('hidden');
             if (bulkQualitySelectModal) bulkQualitySelectModal.classList.add('hidden');
+            if (bulkStudioBatchPill) bulkStudioBatchPill.classList.add('hidden');
+            if (videoInfoInline) videoInfoInline.classList.remove('hidden');
+            if (btnBackText) btnBackText.textContent = 'Upload Another Video';
+            if (studioBulkFormatBar) studioBulkFormatBar.classList.add('hidden');
+            if (btnCaptionEditText) btnCaptionEditText.textContent = 'Download Clean Video';
 
             if (state.currentFilename) {
                 if (uploadCard) uploadCard.classList.add('hidden');

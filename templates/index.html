@@ -134,6 +134,26 @@
                         <div class="percentage-text" id="uploadProgressPercent">0%</div>
                     </div>
                 </div>
+                <!-- Live Process Status Matching Design & Theme -->
+                <div class="upload-process-status-wrap" style="text-align: center; margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <div class="upload-buffering-pill" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 16px; border-radius: 9999px; background: rgba(0, 242, 254, 0.12); border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; font-size: 0.82rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;">
+                        <span class="pulse-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #00f2fe; box-shadow: 0 0 10px #00f2fe;"></span>
+                        <span id="uploadBufferingBadgeText">⚡ Uploading Video...</span>
+                    </div>
+                    <h3 id="uploadModalTitle" style="font-size: 1.25rem; font-weight: 800; font-family: 'Plus Jakarta Sans', sans-serif; background: linear-gradient(135deg, #00f2fe 0%, #4facfe 40%, #b056ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; letter-spacing: -0.02em;">
+                        Uploading Video...
+                    </h3>
+                    <p id="uploadModalStatusText" style="font-size: 0.88rem; font-weight: 500; color: rgba(255, 255, 255, 0.70); margin: 0; font-family: 'Plus Jakarta Sans', sans-serif;">
+                        Sending video to Dola Edits AI Engine...
+                    </p>
+                    <div class="upload-stat-chips" style="display: flex; gap: 10px; margin-top: 4px; align-items: center;">
+                        <span id="uploadStatFileName" style="font-size: 0.78rem; color: rgba(255, 255, 255, 0.55); font-weight: 600;">video.mp4</span>
+                        <span style="color: rgba(255, 255, 255, 0.25);">•</span>
+                        <span id="uploadStatFileSize" style="font-size: 0.78rem; color: rgba(255, 255, 255, 0.55); font-weight: 600;">0 MB</span>
+                        <span style="color: rgba(255, 255, 255, 0.25);">•</span>
+                        <span id="uploadStatTime" style="font-size: 0.78rem; color: #00f2fe; font-weight: 700;">00:00</span>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -1299,6 +1319,6 @@
     <!-- Adsterra Popunder / Direct Network Script -->
     <script src="https://pl31337806.profitableratecpmnetwork.com/e6/34/72/e6347272914943e43ef8ea33ab8fb587.js"></script>
 
-    <script src="/static/js/app.js?v=98.0"></script>
+    <script src="/static/js/app.js?v=99.0"></script>
 </body>
 </html>

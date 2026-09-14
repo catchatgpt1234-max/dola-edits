@@ -212,13 +212,6 @@ def start_processing():
 
         # Automated backend defaults
         bbox = data.get("bbox")
-        if not bbox:
-            try:
-                bbox = auto_detect_dola_watermark(video_path)
-            except Exception as be:
-                print("auto_detect_dola_watermark warning:", be)
-                bbox = [0, 0, 100, 50]
-            
         method = data.get("method", "telea")
         feather = int(data.get("feather", 3))
 
@@ -226,15 +219,6 @@ def start_processing():
         remove_watermark = data.get("remove_watermark", True)
         add_captions = data.get("add_captions", False)
         captions = data.get("captions", [])
-
-        # Server-side safety net: If captions requested but array is empty, auto-transcribe now!
-        if add_captions and not captions:
-            try:
-                trans_result = transcribe_video_speech(video_path)
-                if trans_result and trans_result.get("cues"):
-                    captions = trans_result["cues"]
-            except Exception as te:
-                print("Server-side transcription fallback error:", te)
 
         caption_style = data.get("caption_style", "classic")
         caption_size = data.get("caption_size", "md")
@@ -276,17 +260,38 @@ def start_processing():
                 TASKS[task_id]["eta"] = eta
 
             try:
+                actual_captions = captions
+                if add_captions and not actual_captions:
+                    TASKS[task_id]["percent"] = 5
+                    try:
+                        trans_result = transcribe_video_speech(video_path)
+                        if trans_result and trans_result.get("cues"):
+                            actual_captions = trans_result["cues"]
+                    except Exception as te:
+                        print("Server-side transcription fallback error:", te)
+
+                actual_bbox = bbox
+                if not actual_bbox and remove_watermark:
+                    TASKS[task_id]["percent"] = 10
+                    try:
+                        actual_bbox = auto_detect_dola_watermark(video_path)
+                    except Exception as be:
+                        print("auto_detect_dola_watermark warning:", be)
+                        actual_bbox = [0, 0, 100, 50]
+                elif not actual_bbox:
+                    actual_bbox = [0, 0, 100, 50]
+
                 # High-speed single-pass rendering: directly scales, crops watermark, and burns captions in one pass
                 process_video(
                     video_path=video_path,
                     output_path=output_path,
-                    bbox=bbox,
+                    bbox=actual_bbox,
                     method=method,
                     feather=feather,
                     progress_callback=progress_cb,
                     remove_watermark=remove_watermark,
                     add_captions=add_captions,
-                    captions=captions,
+                    captions=actual_captions,
                     caption_style=caption_style,
                     caption_size=caption_size,
                     caption_line_height=caption_line_height,
