@@ -1546,7 +1546,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         displayPct,
                         task.current_frame,
                         task.total_frames,
-                        displayFps,
+                        task.fps || 0,
                         etaText,
                         task.percent >= 90 ? 'Finalizing audio & video master...' : (task.percent > 0 ? 'Permanently eliminating Dola watermark...' : 'Initializing AI render engine...')
                     );
@@ -1575,18 +1575,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateProgressUI(pct, cur, total, fps, eta, statusMsg) {
-        progressPercent.textContent = `${pct}%`;
+        if (progressPercent) progressPercent.textContent = `${pct}%`;
         
         const circumference = 2 * Math.PI * 42;
         const offset = circumference - (pct / 100) * circumference;
-        progressCircle.style.strokeDashoffset = offset;
+        if (progressCircle) progressCircle.style.strokeDashoffset = offset;
 
-        linearFill.style.width = `${pct}%`;
-        statFrames.textContent = `${cur} / ${total}`;
+        if (linearFill) linearFill.style.width = `${pct}%`;
+        if (statFrames) statFrames.textContent = `${cur} / ${total}`;
         const fpsStr = String(fps);
-        statFps.textContent = fpsStr.includes('fps') || fpsStr.includes('Starting') || fpsStr.includes('Done') ? fpsStr : `${fpsStr} fps`;
-        statEta.textContent = eta;
-        processingStatusText.textContent = statusMsg;
+        if (statFps) statFps.textContent = fpsStr.includes('fps') || fpsStr.includes('Starting') || fpsStr.includes('Done') ? fpsStr : `${fpsStr} fps`;
+        if (statEta) statEta.textContent = eta;
+        if (processingStatusText) processingStatusText.textContent = statusMsg;
     }
 
     function showResultScreen(task) {
