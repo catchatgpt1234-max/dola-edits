@@ -273,11 +273,10 @@ def transcribe_video_speech(video_path, model_size="base"):
         temp_dir = tempfile.gettempdir()
         audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.mp3")
         
-        # Extract clean audio with dynamic audio normalization (dynaudnorm)
+        # Extract audio rapidly for Whisper (instantaneous 16kHz mono rip without slow filter passes)
         cmd = [
             FFMPEG_EXE, "-y", "-i", video_path,
             "-vn",
-            "-af", "dynaudnorm=f=75:g=15:m=10.0:p=0.9",
             "-c:a", "libmp3lame",
             "-b:a", "64k",
             "-ar", "16000",
@@ -287,12 +286,11 @@ def transcribe_video_speech(video_path, model_size="base"):
         sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if not (sub.returncode == 0 and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000):
-            # Fallback 1: WAV extraction with dynaudnorm
+            # Fallback 1: Direct WAV extraction
             audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
             cmd_wav = [
                 FFMPEG_EXE, "-y", "-i", video_path,
                 "-vn",
-                "-af", "dynaudnorm=f=75:g=15:m=10.0:p=0.9",
                 "-acodec", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
