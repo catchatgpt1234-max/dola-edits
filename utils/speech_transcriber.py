@@ -368,8 +368,9 @@ def transcribe_video_speech(video_path, model_size="tiny"):
             except Exception as ge:
                 logger.warning(f"Groq Cloud API unavailable ({ge}), falling back to local faster-whisper...")
 
-        # If Groq was not used or failed, run local faster-whisper on CPU
-        if not all_words:
+        # If Groq was not used or failed, run local faster-whisper on CPU only if NOT on memory-constrained cloud (Render)
+        is_render = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+        if not all_words and not is_render:
             model = get_whisper_model(model_size)
             if model is not None:
                 try:
