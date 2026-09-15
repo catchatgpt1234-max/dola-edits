@@ -36,9 +36,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadedTaskIds = new Set();
     let lastDownloadTimestamp = 0;
 
+    // Adsterra High-CPM Monetization Links (Direct Link & Smartlink)
+    const ADSTERRA_DIRECT_LINK = "https://www.profitableratecpmnetwork.com/w7y7kunzcs?key=2104528aa13745fbb88fc952085a18b3";
+    const ADSTERRA_SMART_LINK = "https://www.profitableratecpmnetwork.com/r7gg3mn4?key=8ee129815e47bbf0cd5d0188986d706c";
+    let lastAdTriggerTime = 0;
+
+    function triggerAdsterraLink(isBulk = false) {
+        try {
+            const now = Date.now();
+            // Debounce sponsor popup (min 15s) so download is reliable and fill-rate is high
+            if (now - lastAdTriggerTime > 15000) {
+                lastAdTriggerTime = now;
+                const targetUrl = isBulk ? ADSTERRA_SMART_LINK : ADSTERRA_DIRECT_LINK;
+                const adWin = window.open(targetUrl, '_blank');
+                if (adWin) {
+                    try {
+                        adWin.blur();
+                        window.focus();
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {
+            console.warn('Ad link notice:', e);
+        }
+    }
+
     function safeTriggerDownload(url, filename, taskId) {
         if (!url) return false;
         trackGAEvent('download_video', 'Media', filename || 'video');
+        triggerAdsterraLink(false);
         
         // 1. Task ID deduplication - never auto-download the same completed task twice
         if (taskId && downloadedTaskIds.has(taskId)) {
@@ -2024,6 +2050,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function attachDownloadFeedback(btn) {
         if (!btn) return;
         btn.addEventListener('click', () => {
+            triggerAdsterraLink(false);
             const currentQuality = state.selectedQuality || '1080';
             const qualityName = QUALITY_LABELS[currentQuality] || 'HD';
             const originalHtml = btn.innerHTML;
@@ -3381,6 +3408,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnDownloadBulkZip) {
         btnDownloadBulkZip.addEventListener('click', () => {
+            triggerAdsterraLink(true);
             const completedTaskIds = bulkQueue.filter(i => i.status === 'completed' && i.taskId).map(i => i.taskId);
             if (completedTaskIds.length === 0) {
                 alert('No completed videos to download.');
@@ -3796,11 +3824,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnDownloadAllCompletedZip) {
         btnDownloadAllCompletedZip.addEventListener('click', () => {
+            triggerAdsterraLink(true);
             triggerBatchZipDownload(lastCompletedTaskIds, lastCompletedQuality);
         });
     }
     if (btnSummaryDownloadZip) {
         btnSummaryDownloadZip.addEventListener('click', () => {
+            triggerAdsterraLink(true);
             triggerBatchZipDownload(lastCompletedTaskIds, lastCompletedQuality);
         });
     }
