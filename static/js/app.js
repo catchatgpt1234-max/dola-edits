@@ -368,8 +368,102 @@ document.addEventListener('DOMContentLoaded', () => {
             container.classList.add('is-vertical');
         } else if (ratio > 1.25) {
             container.classList.add('is-horizontal');
-        } else {
-            container.classList.add('is-square');
+        }
+    }
+
+    async function triggerSpeechTranscription(filename, force = false) {
+        filename = filename || state.currentFilename;
+        if (!filename) return;
+
+        if (state.isTranscribingVoice && !force) return;
+        state.isTranscribingVoice = true;
+
+        const transcribeOverlay = document.getElementById('transcribeBufferingOverlay');
+        const transcribeCenterLabel = document.querySelector('#transcribeBufferingOverlay .transcribe-label');
+
+        const dur = (state.videoMeta && state.videoMeta.duration) || 12;
+        let estSeconds = Math.max(3, Math.min(10, Math.round(dur * 0.35)));
+
+        const updateSyncTimerUI = (secRemaining) => {
+            const timeStr = secRemaining > 0 ? `~${secRemaining}s` : 'finishing...';
+            if (captionSpeechBadge) {
+                captionSpeechBadge.textContent = `⏳ AI Syncing Voice (${timeStr})`;
+                captionSpeechBadge.classList.remove('hidden');
+                captionSpeechBadge.style.cursor = 'default';
+                captionSpeechBadge.onclick = null;
+            }
+            if (transcribeCenterLabel) {
+                transcribeCenterLabel.textContent = `AI Syncing Voice (${timeStr})`;
+            }
+        };
+
+        updateSyncTimerUI(estSeconds);
+        if (captionTextInput) {
+            captionTextInput.value = '';
+            captionTextInput.placeholder = `AI syncing voice (~${estSeconds}s)...`;
+        }
+        if (transcribeOverlay) transcribeOverlay.classList.remove('hidden');
+
+        if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
+        state.transcribeCountdownInterval = setInterval(() => {
+            estSeconds--;
+            updateSyncTimerUI(estSeconds);
+        }, 1000);
+
+        try {
+            const resp = await fetch('/api/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename })
+            });
+
+            let transData;
+            try {
+                transData = await resp.json();
+            } catch (je) {
+                throw new Error(`Server status ${resp.status}`);
+            }
+
+            if (transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
+                if (captionTextInput) {
+                    captionTextInput.value = transData.formatted_text || '';
+                }
+                captionState.cues = transData.cues;
+                if (captionSpeechBadge) {
+                    captionSpeechBadge.textContent = `🎙️ AI Synced (${transData.cues.length} lines)`;
+                    captionSpeechBadge.classList.remove('hidden');
+                    captionSpeechBadge.style.cursor = 'default';
+                    captionSpeechBadge.onclick = null;
+                }
+                if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
+                updateLiveSubtitleOverlay(sourceVideo ? sourceVideo.currentTime : 0);
+            } else {
+                captionState.cues = [];
+                if (captionSpeechBadge) {
+                    captionSpeechBadge.textContent = '🔇 No Voice Detected (Click to Retry)';
+                    captionSpeechBadge.classList.remove('hidden');
+                    captionSpeechBadge.style.cursor = 'pointer';
+                    captionSpeechBadge.onclick = () => triggerSpeechTranscription(filename, true);
+                }
+                if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
+            }
+        } catch (err) {
+            console.warn('Speech transcription error:', err);
+            captionState.cues = [];
+            if (captionSpeechBadge) {
+                captionSpeechBadge.textContent = '⚠️ Voice Sync Failed (Click to Retry)';
+                captionSpeechBadge.classList.remove('hidden');
+                captionSpeechBadge.style.cursor = 'pointer';
+                captionSpeechBadge.onclick = () => triggerSpeechTranscription(filename, true);
+            }
+            if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
+        } finally {
+            state.isTranscribingVoice = false;
+            if (state.transcribeCountdownInterval) {
+                clearInterval(state.transcribeCountdownInterval);
+                state.transcribeCountdownInterval = null;
+            }
+            if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
         }
     }
 
@@ -482,104 +576,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (previewPauseIcon) previewPauseIcon.classList.add('hidden');
 
         // Initialize AI speech transcription if caption add mode is active
-        const transcribeOverlay = document.getElementById('transcribeBufferingOverlay');
         if (captionState.isCaptionAddActive) {
             if (data.transcription && data.transcription.has_speech && data.transcription.cues && data.transcription.cues.length > 0) {
-                if (captionTextInput) captionTextInput.value = data.transcription.formatted_text;
+                if (captionTextInput) captionTextInput.value = data.transcription.formatted_text || '';
                 captionState.cues = data.transcription.cues;
                 if (captionSpeechBadge) {
-                    captionSpeechBadge.textContent = `🎙️ Synced (${data.transcription.cues.length} lines)`;
+                    captionSpeechBadge.textContent = `🎙️ AI Synced (${data.transcription.cues.length} lines)`;
                     captionSpeechBadge.classList.remove('hidden');
+                    captionSpeechBadge.style.cursor = 'default';
                 }
-                if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
                 if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
                 updateLiveSubtitleOverlay(0);
+            } else if (data.metadata && data.metadata.has_audio) {
+                captionState.cues = [];
+                triggerSpeechTranscription(data.filename);
             } else {
                 captionState.cues = [];
-                // If video has audio, trigger background speech transcription asynchronously
-                if (data.metadata && data.metadata.has_audio) {
-                    let estSeconds = Math.max(3, Math.min(8, Math.round((data.metadata.duration || 15) * 0.3)));
-                    const transcribeCenterLabel = document.querySelector('#transcribeBufferingOverlay .transcribe-label');
-
-                    const updateSyncTimerUI = (secRemaining) => {
-                        const timeStr = secRemaining > 0 ? `~${secRemaining}s` : 'finishing...';
-                        if (captionSpeechBadge) {
-                            captionSpeechBadge.textContent = `⏳ AI Syncing (${timeStr})`;
-                            captionSpeechBadge.classList.remove('hidden');
-                        }
-                        if (transcribeCenterLabel) {
-                            transcribeCenterLabel.textContent = `AI Syncing (${timeStr})`;
-                        }
-                    };
-
-                    updateSyncTimerUI(estSeconds);
-                    if (captionTextInput) {
-                        captionTextInput.value = '';
-                        captionTextInput.placeholder = `AI syncing voice (~${estSeconds}s)... (or type your own subtitles)`;
-                    }
-                    // Show buffering spinner on video center
-                    if (transcribeOverlay) transcribeOverlay.classList.remove('hidden');
-
-                    let remainingCountdown = estSeconds;
-                    if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
-                    state.transcribeCountdownInterval = setInterval(() => {
-                        remainingCountdown--;
-                        updateSyncTimerUI(remainingCountdown);
-                    }, 1000);
-
-                    fetch('/api/transcribe', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename: data.filename })
-                    })
-                    .then(res => res.json())
-                    .then(transData => {
-                        if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
-                        // Hide buffering overlay
-                        if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
-
-                        if (transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
-                            if (captionTextInput) {
-                                captionTextInput.value = transData.formatted_text;
-                            }
-                            captionState.cues = transData.cues;
-                            if (captionSpeechBadge) {
-                                captionSpeechBadge.textContent = `🎙️ Synced (${transData.cues.length} lines)`;
-                                captionSpeechBadge.classList.remove('hidden');
-                            }
-                            if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
-                            updateLiveSubtitleOverlay(sourceVideo ? sourceVideo.currentTime : 0);
-                        } else {
-                            if (captionSpeechBadge) {
-                                captionSpeechBadge.textContent = '🔇 No Voice Found';
-                                captionSpeechBadge.classList.remove('hidden');
-                            }
-                        }
-                    })
-                    .catch(err => {
-                        console.warn('Background transcription error:', err);
-                        if (state.transcribeCountdownInterval) clearInterval(state.transcribeCountdownInterval);
-                        if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
-                        if (captionSpeechBadge) {
-                            captionSpeechBadge.textContent = '🔇 Manual Mode';
-                            captionSpeechBadge.classList.remove('hidden');
-                        }
-                    });
-                } else {
-                    if (captionTextInput) {
-                        captionTextInput.value = '';
-                        captionTextInput.placeholder = 'No audio in video. Type subtitles here...';
-                    }
-                    if (captionSpeechBadge) {
-                        captionSpeechBadge.textContent = '🔇 No Audio';
-                        captionSpeechBadge.classList.remove('hidden');
-                    }
-                    if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
-                    if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
-                    updateLiveSubtitleOverlay(0);
+                if (captionTextInput) {
+                    captionTextInput.value = '';
+                    captionTextInput.placeholder = 'No audio detected in video. Type subtitles here...';
                 }
+                if (captionSpeechBadge) {
+                    captionSpeechBadge.textContent = '🔇 No Audio';
+                    captionSpeechBadge.classList.remove('hidden');
+                }
+                if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
+                updateLiveSubtitleOverlay(0);
             }
         } else {
+            const transcribeOverlay = document.getElementById('transcribeBufferingOverlay');
             if (captionSpeechBadge) captionSpeechBadge.classList.add('hidden');
             if (previewCaptionOverlay) previewCaptionOverlay.classList.add('hidden');
             if (transcribeOverlay) transcribeOverlay.classList.add('hidden');
@@ -703,6 +728,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (captionState.isCaptionAddActive) {
                 toggleCaption.classList.add('active');
                 if (captionStudioPanel) captionStudioPanel.classList.remove('hidden');
+                if ((!captionState.cues || captionState.cues.length === 0) && state.currentFilename && state.videoMeta && state.videoMeta.has_audio) {
+                    triggerSpeechTranscription(state.currentFilename);
+                }
             } else {
                 toggleCaption.classList.remove('active');
                 if (captionStudioPanel) captionStudioPanel.classList.add('hidden');
@@ -811,6 +839,9 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleCaption.addEventListener('click', () => {
             captionState.isCaptionAddActive = !captionState.isCaptionAddActive;
             updateFeatureTogglesUI();
+            if (captionState.isCaptionAddActive && (!captionState.cues || captionState.cues.length === 0) && state.currentFilename && state.videoMeta && state.videoMeta.has_audio) {
+                triggerSpeechTranscription(state.currentFilename);
+            }
             if (bulkQueue && bulkQueue.length > 0) {
                 renderBulkQueue();
             }
@@ -1139,16 +1170,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     activeCue = nearestPast;
                 } else if (nearestFuture) {
                     activeCue = nearestFuture;
-                } else if (nearestPast) {
-                    activeCue = nearestPast;
                 } else {
                     activeCue = captionState.cues[0];
                 }
             }
-        } else if (state.isBulkStudioMode || document.body.classList.contains('studio-view-active')) {
-            // In Studio mode when cues are not yet available:
-            // Display live sample preview so user immediately sees what their chosen preset looks like!
-            activeCue = { text: "✨ Live Caption Preview ✨", start: 0, end: 999 };
         }
 
         if (!activeCue || !activeCue.text || !activeCue.text.trim()) {
