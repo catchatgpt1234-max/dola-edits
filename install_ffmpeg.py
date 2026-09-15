@@ -15,9 +15,10 @@ def install_ffmpeg():
 
     # Reliable static builds containing libass, freetype, fontconfig
     urls = [
-        'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
-        'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz'
+        'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
+        'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
     ]
+
 
     for url in urls:
         print(f'Downloading static FFmpeg from: {url} ...')

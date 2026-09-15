@@ -87,6 +87,22 @@ def is_nvenc_available():
     _NVENC_CHECKED = True
     return _NVENC_AVAILABLE
 
+_FFMPEG_FILTERS = None
+
+def get_ffmpeg_filters():
+    global _FFMPEG_FILTERS
+    if _FFMPEG_FILTERS is not None:
+        return _FFMPEG_FILTERS
+    try:
+        res = subprocess.run([FFMPEG_EXE, "-filters"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=5)
+        _FFMPEG_FILTERS = res.stdout
+    except Exception:
+        _FFMPEG_FILTERS = ""
+    return _FFMPEG_FILTERS
+
+def has_filter(filter_name):
+    return filter_name in get_ffmpeg_filters()
+
 # Font path for captions (SoniAutoEditor / ZBot font)
 CAPTION_FONT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "fonts", "caption.ttf"))
 
@@ -245,35 +261,35 @@ def create_ass_subtitles_file(captions, width, height, style_name="classic", siz
     scale_ratio = scale_val / 0.052
 
     if aspect_ratio < 0.85:
-        p = max(18, round(width * 0.066 * scale_ratio))
+        p = max(24, round(width * 0.075 * scale_ratio))
     else:
-        p = max(18, round(height * 0.052 * scale_ratio))
+        p = max(24, round(height * 0.058 * scale_ratio))
 
     border_w = max(2, round(p / 8))
     bottom_margin_ratio = float(pos_y) if pos_y is not None and float(pos_y) > 0 else 0.07
     margin_v = max(10, round(height * bottom_margin_ratio))
 
-    # ASS Colors in &HAABBGGRR format
+    # ASS Colors in &HAABBGGRR format (&H00 is 100% opaque, &HFF is transparent)
     ASS_STYLE_MAP = {
-        "classic": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 1, "shdw": 1},
-        "yellow": {"prim": "&H0000D4FF", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 1, "shdw": 1},
-        "mrbeast": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 4, "shdw": 3},
-        "hormozi": {"prim": "&H0066FF00", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 3, "shdw": 3},
-        "cyberpunk": {"prim": "&H00852AFF", "outl": "&H00000000", "back": "&H80E22B8A", "border": 1, "outw": border_w + 2, "shdw": 2},
-        "flame": {"prim": "&H00303BFF", "outl": "&H00000000", "back": "&H800066FF", "border": 1, "outw": border_w + 2, "shdw": 2},
-        "gold": {"prim": "&H0000D7FF", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 3, "shdw": 2},
-        "blue": {"prim": "&H00FFE500", "outl": "&H00000000", "back": "&H80884400", "border": 1, "outw": border_w + 3, "shdw": 2},
-        "neon": {"prim": "&H00CCFF00", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 2, "shdw": 1},
-        "boxed": {"prim": "&H00FFFFFF", "outl": "&H80000000", "back": "&H80000000", "border": 3, "outw": border_w + 3, "shdw": 0},
-        "glass": {"prim": "&H00FFFFFF", "outl": "&HB0221612", "back": "&HB0221612", "border": 3, "outw": border_w + 3, "shdw": 0},
-        "aliabdaal": {"prim": "&H00FFFFFF", "outl": "&HB0141414", "back": "&HB0141414", "border": 3, "outw": border_w + 3, "shdw": 0},
-        "devinjatho": {"prim": "&H0000E6FF", "outl": "&HD0050505", "back": "&HD0050505", "border": 3, "outw": border_w + 4, "shdw": 0},
-        "karaoke": {"prim": "&H0020FF80", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": border_w + 3, "shdw": 3},
-        "cinematic": {"prim": "&H00F7F5F5", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(1, border_w - 1), "shdw": 2},
-        "synthwave": {"prim": "&H00FF3399", "outl": "&H00000000", "back": "&H807F00FF", "border": 1, "outw": border_w + 2, "shdw": 3},
-        "frost": {"prim": "&H00FFFFD0", "outl": "&H00000000", "back": "&H80882200", "border": 1, "outw": border_w + 3, "shdw": 3},
-        "velvet": {"prim": "&H002222E6", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": border_w + 2, "shdw": 2},
-        "purplepop": {"prim": "&H00FFFFFF", "outl": "&H00C50065", "back": "&H00C50065", "border": 3, "outw": border_w + 4, "shdw": 0},
+        "classic": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": max(2, round(p * 0.09)), "shdw": 2},
+        "yellow": {"prim": "&H0000D4FF", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": max(2, round(p * 0.09)), "shdw": 2},
+        "mrbeast": {"prim": "&H00FFFFFF", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(4, round(p * 0.14)), "shdw": 3},
+        "hormozi": {"prim": "&H0066FF00", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(3, round(p * 0.12)), "shdw": 2},
+        "cyberpunk": {"prim": "&H00852AFF", "outl": "&H00000000", "back": "&H40FFD000", "border": 1, "outw": max(2, round(p * 0.08)), "shdw": 2},
+        "flame": {"prim": "&H00303BFF", "outl": "&H00000000", "back": "&H800066FF", "border": 1, "outw": max(3, round(p * 0.10)), "shdw": 2},
+        "gold": {"prim": "&H0000D7FF", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(3, round(p * 0.10)), "shdw": 2},
+        "blue": {"prim": "&H00FFE500", "outl": "&H00000000", "back": "&H80884400", "border": 1, "outw": max(3, round(p * 0.10)), "shdw": 2},
+        "neon": {"prim": "&H00CCFF00", "outl": "&H00000000", "back": "&H4000FFCC", "border": 1, "outw": max(3, round(p * 0.10)), "shdw": 2},
+        "boxed": {"prim": "&H00FFFFFF", "outl": "&H18000000", "back": "&H18000000", "border": 3, "outw": max(10, round(p * 0.24)), "shdw": 0},
+        "glass": {"prim": "&H00FFFFFF", "outl": "&H30221612", "back": "&H30221612", "border": 3, "outw": max(10, round(p * 0.24)), "shdw": 0},
+        "aliabdaal": {"prim": "&H00FFFFFF", "outl": "&H25120F0F", "back": "&H25120F0F", "border": 3, "outw": max(10, round(p * 0.24)), "shdw": 0},
+        "devinjatho": {"prim": "&H0000E6FF", "outl": "&H00000000", "back": "&H00000000", "border": 3, "outw": max(12, round(p * 0.26)), "shdw": 0},
+        "karaoke": {"prim": "&H0020FF80", "outl": "&H00000000", "back": "&H80000000", "border": 1, "outw": max(3, round(p * 0.10)), "shdw": 2},
+        "cinematic": {"prim": "&H00F5F5F7", "outl": "&H50000000", "back": "&H70000000", "border": 1, "outw": max(1, round(p * 0.05)), "shdw": 1},
+        "synthwave": {"prim": "&H00FF3399", "outl": "&H00000000", "back": "&H407F00FF", "border": 1, "outw": max(3, round(p * 0.09)), "shdw": 2},
+        "frost": {"prim": "&H00FFFFD0", "outl": "&H00000000", "back": "&H40882200", "border": 1, "outw": max(3, round(p * 0.09)), "shdw": 2},
+        "velvet": {"prim": "&H002222E6", "outl": "&H00000000", "back": "&H90000000", "border": 1, "outw": max(3, round(p * 0.09)), "shdw": 2},
+        "purplepop": {"prim": "&H00FFFFFF", "outl": "&H00C50065", "back": "&H00C50065", "border": 3, "outw": max(12, round(p * 0.26)), "shdw": 0},
     }
     st = ASS_STYLE_MAP.get(style_name, ASS_STYLE_MAP["classic"])
 
@@ -288,7 +304,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{p},{st['prim']},&H000000FF,{st['outl']},{st['back']},-1,0,0,0,100,100,0,0,{st['border']},{st['outw']},{st['shdw']},2,20,20,{margin_v},1
+Style: Default,DejaVu Sans,{p},{st['prim']},&H000000FF,{st['outl']},{st['back']},-1,0,0,0,100,100,0,0,{st['border']},{st['outw']},{st['shdw']},2,20,20,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -325,12 +341,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ass_text = r"\N".join(valid_lines)
         t_start = format_ass_time(cue["start"])
         t_end = format_ass_time(cue["end"])
-        events.append(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{ass_text}")
+        events.append(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{{\\b1}}{ass_text}")
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(events) + "\n")
 
     return ass_path
+
 
 def build_caption_filters(captions, width, height, style_name="classic", size_key="md", line_height=None, pos_y=None, temp_dir=None):
     if not captions:
@@ -728,19 +745,45 @@ def process_video(
                 wm_filter = f"crop={crop_window_w}:{crop_window_h}:{crop_x}:{crop_y},scale={tw}:{th}:flags={scale_flag},setsar=1"
                 sub_w, sub_h = tw, th
 
-        # Build caption filter using TrueType font (caption.ttf) and exact CSS box/outline styling
+        # Build caption filter using high-speed, native ASS subtitles engine (0.5s render, 100% styled)
         cap_filter = ""
+        ass_path = None
         if add_captions and captions:
-            cap_filter = build_caption_filters(
-                captions=captions,
-                width=sub_w if 'sub_w' in locals() else tw,
-                height=sub_h if 'sub_h' in locals() else th,
-                style_name=caption_style or "classic",
-                size_key=caption_size or "md",
-                line_height=caption_line_height,
-                pos_y=caption_pos_y,
-                temp_dir=temp_dir
-            )
+            render_w = sub_w if 'sub_w' in locals() else tw
+            render_h = sub_h if 'sub_h' in locals() else th
+            try:
+                ass_path = create_ass_subtitles_file(
+                    captions=captions,
+                    width=render_w,
+                    height=render_h,
+                    style_name=caption_style or "classic",
+                    size_key=caption_size or "md",
+                    line_height=caption_line_height,
+                    pos_y=caption_pos_y,
+                    temp_dir=temp_dir
+                )
+                if ass_path and os.path.exists(ass_path):
+                    fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "fonts")).replace("\\", "/").replace(":", "\\:")
+                    escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                    cap_filter = f"subtitles='{escaped_ass}':fontsdir='{fonts_dir}'"
+            except Exception as ce:
+                print("Error creating ASS subtitles:", ce)
+
+            # Only fallback to drawtext if subtitles engine failed AND drawtext filter is available in FFmpeg
+            if not cap_filter and has_filter("drawtext"):
+                try:
+                    cap_filter = build_caption_filters(
+                        captions=captions,
+                        width=render_w,
+                        height=render_h,
+                        style_name=caption_style or "classic",
+                        size_key=caption_size or "md",
+                        line_height=caption_line_height,
+                        pos_y=caption_pos_y,
+                        temp_dir=temp_dir
+                    )
+                except Exception as de:
+                    print("Fallback drawtext build error:", de)
 
         # Combine filters
         if wm_filter and cap_filter:
@@ -855,31 +898,15 @@ def process_video(
                 recent_err = "\n".join(output_lines[-20:])
                 print("FFMPEG primary encode notice (returncode", proc.returncode, "): Last lines:\n", recent_err)
                 
-                # Check alternative caption filter
-                dt_filter = ""
-                if add_captions and captions:
-                    try:
-                        dt_filter = build_caption_filters(
-                            captions=captions,
-                            width=tw,
-                            height=th,
-                            style_name=caption_style or "classic",
-                            size_key=caption_size or "md",
-                            line_height=caption_line_height,
-                            pos_y=caption_pos_y,
-                            temp_dir=temp_dir
-                        )
-                    except Exception as de:
-                        print("Drawtext fallback filter error:", de)
-
-                if wm_filter and dt_filter:
-                    retry_filter = f"{wm_filter},{dt_filter}"
+                if wm_filter and cap_filter:
+                    retry_filter = f"{wm_filter},{cap_filter}"
                 elif wm_filter:
                     retry_filter = wm_filter
-                elif dt_filter:
-                    retry_filter = f"scale={tw}:{th}:flags=bilinear,setsar=1,{dt_filter}"
+                elif cap_filter:
+                    retry_filter = f"scale={tw}:{th}:flags=bilinear,setsar=1,{cap_filter}"
                 else:
                     retry_filter = "null"
+
 
                 cmd_fallback = [
                     FFMPEG_EXE, "-y",
