@@ -6,7 +6,3 @@ groq_key.txt
 __pycache__/
 *.pyc
 bin/
-scratch/
-temp/
-uploads/
-outputs/

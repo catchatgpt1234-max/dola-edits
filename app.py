@@ -72,13 +72,38 @@ def cleanup_old_tasks():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'mp4', 'mov', 'avi', 'mkv', 'webm'}
 
+def get_ga_id():
+    env_id = os.environ.get("GA_MEASUREMENT_ID", "").strip()
+    if env_id:
+        return env_id
+    key_file = os.path.join(BASE_DIR, "ga_id.txt")
+    if os.path.exists(key_file):
+        try:
+            with open(key_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and line.startswith("G-"):
+                        return line
+        except Exception:
+            pass
+    return "G-XXXXXXXXXX"
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    ga_id = get_ga_id()
+    return render_template("index.html", ga_id=ga_id)
 
 @app.route("/favicon.ico")
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+@app.route("/robots.txt")
+def robots_txt():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'robots.txt', mimetype='text/plain')
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'sitemap.xml', mimetype='application/xml')
 
 @app.route("/api/upload", methods=["POST"])
 def upload_video():
@@ -178,25 +203,33 @@ def api_transcribe_audio():
     On-demand AI Audio Speech Analysis endpoint.
     Transcribes spoken words from video with precise timestamps.
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     filename = data.get("filename")
     if not filename:
-        return jsonify({"error": "filename is required"}), 400
+        return jsonify({"success": False, "error": "filename is required"}), 400
 
     video_path = os.path.join(UPLOAD_DIR, secure_filename(filename))
     if not os.path.exists(video_path):
-        return jsonify({"error": "Video not found"}), 404
+        return jsonify({"success": False, "error": "Video not found"}), 404
 
     try:
         if video_path in TRANSCRIPTION_CACHE:
             return jsonify({"success": True, **TRANSCRIPTION_CACHE[video_path]})
 
         result = transcribe_video_speech(video_path)
-        if result and result.get("cues"):
+        if result:
             TRANSCRIPTION_CACHE[video_path] = result
-        return jsonify({"success": True, **result})
+        return jsonify({"success": True, **(result or {"has_speech": False, "cues": []})})
     except Exception as e:
-        return jsonify({"error": f"Speech transcription failed: {str(e)}"}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": True,
+            "has_speech": False,
+            "cues": [],
+            "formatted_text": "",
+            "message": f"Transcription warning: {str(e)}"
+        })
 
 @app.route("/api/process", methods=["POST"])
 def start_processing():

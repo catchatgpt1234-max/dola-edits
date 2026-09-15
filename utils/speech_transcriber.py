@@ -8,10 +8,18 @@ import tempfile
 import subprocess
 from utils.watermark_engine import FFMPEG_EXE
 
+import threading
+import time
+
 logger = logging.getLogger(__name__)
 
 _whisper_model = None
 _whisper_model_size = None
+
+_GROQ_FAILED_UNTIL = 0
+_IN_PROGRESS_LOCK = threading.Lock()
+_IN_PROGRESS_EVENTS = {}
+_IN_PROGRESS_RESULTS = {}
 
 def get_whisper_model(model_size="tiny"):
     """
@@ -25,7 +33,7 @@ def get_whisper_model(model_size="tiny"):
     for m_size in [model_size, "base"]:
         try:
             logger.info(f"Loading faster-whisper model ({m_size}) on CPU...")
-            _whisper_model = WhisperModel(m_size, device="cpu", compute_type="int8")
+            _whisper_model = WhisperModel(m_size, device="cpu", compute_type="int8", cpu_threads=min(4, os.cpu_count() or 4), num_workers=1)
             _whisper_model_size = m_size
             logger.info(f"faster-whisper model ({m_size}) loaded successfully.")
             return _whisper_model
@@ -141,23 +149,18 @@ def _extract_words_from_segments(segments_list):
 def get_groq_api_key():
     """Retrieves Groq API key from environment, local file, or embedded default."""
     env_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if env_key:
+    if env_key and not env_key.startswith("gsk_TI0ZXjOY4kbPzEsdBXwjWGdyb3FY"):
         return env_key
     key_file = os.path.join(os.path.dirname(__file__), "..", "groq_key.txt")
     if os.path.exists(key_file):
         try:
             with open(key_file, "r", encoding="utf-8") as f:
                 k = f.read().strip()
-                if len(k) > 20:
+                if len(k) > 20 and not k.startswith("gsk_TI0ZXjOY4kbPzEsdBXwjWGdyb3FY"):
                     return k
         except Exception:
             pass
-    try:
-        # Runtime decode default key to maintain zero-setup fast Whisper on cloud hosts
-        _b = [61, 41, 49, 5, 14, 19, 106, 0, 2, 48, 21, 3, 110, 49, 56, 10, 32, 31, 41, 62, 24, 2, 45, 48, 13, 29, 62, 35, 56, 105, 28, 3, 47, 14, 13, 23, 21, 27, 3, 11, 98, 42, 57, 59, 24, 57, 48, 17, 56, 16, 54, 16, 53, 59, 14, 22]
-        return "".join(chr(c ^ 0x5A) for c in _b)
-    except Exception:
-        return ""
+    return ""
 
 GROQ_API_KEY = get_groq_api_key()
 
@@ -167,6 +170,10 @@ def _transcribe_with_groq(audio_path, api_key=None):
     Tries whisper-large-v3-turbo first for speed, then whisper-large-v3.
     Returns (all_words, detected_language) or raises an exception.
     """
+    global _GROQ_FAILED_UNTIL
+    if time.time() < _GROQ_FAILED_UNTIL:
+        raise RuntimeError("Groq API in temporary cooldown after authentication/network failure.")
+
     key = api_key or get_groq_api_key() or GROQ_API_KEY
     if not key:
         raise ValueError("Groq API key not provided.")
@@ -201,7 +208,7 @@ def _transcribe_with_groq(audio_path, api_key=None):
                     "timestamp_granularities[]": "word",
                     "temperature": "0.0"
                 }
-                resp = requests.post(url, headers=headers, files=files, data=data, timeout=35)
+                resp = requests.post(url, headers=headers, files=files, data=data, timeout=8)
 
             if resp.status_code == 200:
                 result = resp.json()
@@ -233,6 +240,7 @@ def _transcribe_with_groq(audio_path, api_key=None):
                             })
                 return all_words, detected_lang
             elif resp.status_code in (401, 403):
+                _GROQ_FAILED_UNTIL = time.time() + 600  # 10 minutes cooldown
                 last_error = f"Groq {model_name} HTTP {resp.status_code}: {resp.text}"
                 logger.warning(last_error)
                 break
@@ -240,6 +248,7 @@ def _transcribe_with_groq(audio_path, api_key=None):
                 last_error = f"Groq {model_name} HTTP {resp.status_code}: {resp.text}"
                 logger.warning(last_error)
         except Exception as e:
+            _GROQ_FAILED_UNTIL = time.time() + 60
             last_error = f"Groq {model_name} error: {e}"
             logger.warning(last_error)
 
@@ -247,9 +256,9 @@ def _transcribe_with_groq(audio_path, api_key=None):
 
 def transcribe_video_speech(video_path, model_size="tiny"):
     """
-    High-Precision AI Speech Transcription:
+    High-Precision AI Speech Transcription with Concurrency Protection:
     1. Primary: Groq Cloud Whisper Large V3 (ultra-fast 0.5s response, 0% server CPU/RAM load).
-    2. Fallback: Local faster-whisper model on CPU.
+    2. Fallback: Local faster-whisper model on CPU (fast greedy decoding beam_size=1).
     """
     if not os.path.exists(video_path):
         return {
@@ -260,7 +269,29 @@ def transcribe_video_speech(video_path, model_size="tiny"):
             "message": "Video file not found."
         }
 
+    norm_path = os.path.abspath(video_path)
+    with _IN_PROGRESS_LOCK:
+        if norm_path in _IN_PROGRESS_EVENTS:
+            evt = _IN_PROGRESS_EVENTS[norm_path]
+            is_waiter = True
+        else:
+            evt = threading.Event()
+            _IN_PROGRESS_EVENTS[norm_path] = evt
+            is_waiter = False
+
+    if is_waiter:
+        # Wait up to 20 seconds for in-progress transcription to finish
+        evt.wait(timeout=20.0)
+        return _IN_PROGRESS_RESULTS.get(norm_path, {
+            "has_speech": False,
+            "language": None,
+            "cues": [],
+            "formatted_text": "",
+            "message": "Transcription finished by concurrent process."
+        })
+
     audio_path = None
+    final_result = None
     try:
         vid_duration = 10.0
         try:
@@ -313,48 +344,54 @@ def transcribe_video_speech(video_path, model_size="tiny"):
                 ]
                 sub_raw = subprocess.run(cmd_raw, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if not (sub_raw.returncode == 0 and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000):
-                    # Fallback 3: Send video directly to Groq Whisper if under 25MB
-                    if os.path.exists(video_path) and os.path.getsize(video_path) < 25 * 1024 * 1024:
-                        audio_path = video_path
-                    else:
-                        return {
-                            "has_speech": False,
-                            "language": None,
-                            "cues": [],
-                            "formatted_text": "",
-                            "message": "No valid audio track found in video."
-                        }
+                    # No audio track could be extracted from this video
+                    final_result = {
+                        "has_speech": False,
+                        "language": None,
+                        "cues": [],
+                        "formatted_text": "",
+                        "message": "No valid audio track found in video."
+                    }
+                    return final_result
 
         all_words = []
         detected_lang = None
 
-        # Try Groq Cloud Whisper API first (Ultra-fast, 0% CPU)
-        try:
-            logger.info("Transcribing audio via Groq Cloud Whisper Large V3...")
-            all_words, detected_lang = _transcribe_with_groq(audio_path)
-            logger.info(f"Groq transcription completed: {len(all_words)} words, language={detected_lang}")
-        except Exception as ge:
-            logger.warning(f"Groq Cloud API unavailable ({ge}), falling back to local faster-whisper...")
+        # Try Groq Cloud Whisper API first if a valid API key is present
+        groq_k = get_groq_api_key() or GROQ_API_KEY
+        if groq_k:
+            try:
+                logger.info("Transcribing audio via Groq Cloud Whisper Large V3...")
+                all_words, detected_lang = _transcribe_with_groq(audio_path, api_key=groq_k)
+                logger.info(f"Groq transcription completed: {len(all_words)} words, language={detected_lang}")
+            except Exception as ge:
+                logger.warning(f"Groq Cloud API unavailable ({ge}), falling back to local faster-whisper...")
+
+        # If Groq was not used or failed, run local faster-whisper on CPU
+        if not all_words:
             model = get_whisper_model(model_size)
             if model is not None:
-                segments, info = model.transcribe(
-                    audio_path,
-                    beam_size=2,
-                    best_of=1,
-                    temperature=0.0,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        threshold=0.20,
-                        min_speech_duration_ms=100,
-                        min_silence_duration_ms=300,
-                        speech_pad_ms=250
-                    ),
-                    condition_on_previous_text=False,
-                    word_timestamps=True,
-                    repetition_penalty=1.2
-                )
-                all_words = _extract_words_from_segments(list(segments))
-                detected_lang = getattr(info, "language", None)
+                try:
+                    segments, info = model.transcribe(
+                        audio_path,
+                        beam_size=1,  # ultra-fast greedy decoding
+                        best_of=1,
+                        temperature=0.0,
+                        vad_filter=True,
+                        vad_parameters=dict(
+                            threshold=0.25,
+                            min_speech_duration_ms=100,
+                            min_silence_duration_ms=300,
+                            speech_pad_ms=200
+                        ),
+                        condition_on_previous_text=False,
+                        word_timestamps=True
+                    )
+                    all_words = _extract_words_from_segments(list(segments))
+                    detected_lang = getattr(info, "language", None)
+                except Exception as te:
+                    logger.warning(f"faster-whisper transcription error: {te}")
+                    all_words = []
 
                 # If vad_filter removed everything (e.g. child voice, whisper, or speech over music), retry without vad
                 if not all_words:
@@ -411,23 +448,37 @@ def transcribe_video_speech(video_path, model_size="tiny"):
         has_speech = len(cues) > 0
         formatted_text = "\n".join(formatted_lines)
 
-        return {
+        final_result = {
             "has_speech": has_speech,
             "language": detected_lang,
             "cues": cues,
             "formatted_text": formatted_text,
             "message": f"Successfully transcribed {len(cues)} speech cues." if has_speech else "No speech detected in audio."
         }
+        return final_result
     except Exception as e:
         logger.warning(f"Audio transcription warning for {video_path}: {e}")
-        return {
+        final_result = {
             "has_speech": False,
             "language": None,
             "cues": [],
             "formatted_text": "",
             "message": f"Transcription error: {str(e)}"
         }
+        return final_result
     finally:
+        if not is_waiter:
+            with _IN_PROGRESS_LOCK:
+                if final_result is not None:
+                    _IN_PROGRESS_RESULTS[norm_path] = final_result
+                evt.set()
+                def _cleanup_in_progress():
+                    time.sleep(30)
+                    with _IN_PROGRESS_LOCK:
+                        _IN_PROGRESS_EVENTS.pop(norm_path, None)
+                        _IN_PROGRESS_RESULTS.pop(norm_path, None)
+                threading.Thread(target=_cleanup_in_progress, daemon=True).start()
+
         if audio_path and audio_path != video_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)

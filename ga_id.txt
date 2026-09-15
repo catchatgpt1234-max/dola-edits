@@ -1,0 +1,3 @@
+# Paste your Google Analytics 4 (GA4) Measurement ID below (e.g. G-XXXXXXXXXX)
+# Go to https://analytics.google.com -> Admin -> Data Streams -> Web -> Copy "Measurement ID"
+G-XXXXXXXXXX

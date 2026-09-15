@@ -20,12 +20,25 @@ document.addEventListener('DOMContentLoaded', () => {
     window.appState = state;
     window.state = state;
 
+    function trackGAEvent(action, category, label) {
+        try {
+            if (typeof window.gtag === 'function') {
+                window.gtag('event', action, {
+                    event_category: category || 'General',
+                    event_label: label || ''
+                });
+            }
+        } catch (e) {}
+    }
+    window.trackGAEvent = trackGAEvent;
+
     // Strict Download Deduplication & Single Execution Guard
     const downloadedTaskIds = new Set();
     let lastDownloadTimestamp = 0;
 
     function safeTriggerDownload(url, filename, taskId) {
         if (!url) return false;
+        trackGAEvent('download_video', 'Media', filename || 'video');
         
         // 1. Task ID deduplication - never auto-download the same completed task twice
         if (taskId && downloadedTaskIds.has(taskId)) {
@@ -298,18 +311,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
-        xhr.timeout = 180000; // 3 minutes timeout limit for high-res videos
+        xhr.timeout = 300000; // 5 minutes timeout limit for high-res videos
 
-        // Real upload progress with percentage and timer
+        // Real upload progress with percentage, speed, and remaining time
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
                 const uploadPct = Math.min(99, Math.round((e.loaded / e.total) * 100));
-                setUploadProgress(uploadPct, `Uploading video (${uploadPct}%)...`, '⚡ Uploading...');
+                const elapsedSec = Math.max(0.5, (Date.now() - uploadStartTime) / 1000);
+                const speedMBs = ((e.loaded / (1024 * 1024)) / elapsedSec).toFixed(1);
+                const remBytes = e.total - e.loaded;
+                const remSec = speedMBs > 0 ? Math.ceil((remBytes / (1024 * 1024)) / speedMBs) : 0;
+                const remText = remSec > 0 ? ` • ~${remSec}s left` : '';
+                setUploadProgress(uploadPct, `Uploading (${uploadPct}% • ${speedMBs} MB/s${remText})...`, '⚡ Uploading...');
             }
         };
 
         xhr.upload.onload = () => {
-            setUploadProgress(100, 'Finishing & Opening Studio...', '🎉 Complete!');
+            setUploadProgress(100, 'Saving & Opening Studio... (~2s)', '🎉 Upload Complete!');
         };
 
         xhr.onload = () => {
@@ -411,20 +429,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
 
         try {
-            const resp = await fetch('/api/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename })
-            });
-
-            let transData;
-            try {
-                transData = await resp.json();
-            } catch (je) {
-                throw new Error(`Server status ${resp.status}`);
+            let resp = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    resp = await fetch('/api/transcribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename })
+                    });
+                    if (resp && resp.status === 524 && attempt < 2) {
+                        console.warn('[Transcribe] 524 received, auto-retrying in 1.5s...');
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    break;
+                } catch (netErr) {
+                    if (attempt < 2) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    throw netErr;
+                }
             }
 
-            if (transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
+            let transData = null;
+            if (resp) {
+                try {
+                    transData = await resp.json();
+                } catch (je) {
+                    console.warn('Transcribe response was not JSON:', je);
+                }
+            }
+
+            if (transData && transData.success && transData.has_speech && transData.cues && transData.cues.length > 0) {
                 if (captionTextInput) {
                     captionTextInput.value = transData.formatted_text || '';
                 }
@@ -451,7 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('Speech transcription error:', err);
             captionState.cues = [];
             if (captionSpeechBadge) {
-                captionSpeechBadge.textContent = '⚠️ Voice Sync Failed (Click to Retry)';
+                captionSpeechBadge.textContent = '⚠️ Voice Sync Retry (Click to Retry)';
                 captionSpeechBadge.classList.remove('hidden');
                 captionSpeechBadge.style.cursor = 'pointer';
                 captionSpeechBadge.onclick = () => triggerSpeechTranscription(filename, true);
@@ -1300,33 +1337,59 @@ document.addEventListener('DOMContentLoaded', () => {
             : add_captions ? `Dola Edits: Burning Captions (${qName})...` : `Dola Edits: Removing Watermark (${qName})...`;
         updateProgressUI(0, 0, state.videoMeta ? state.videoMeta.frame_count : 0, 0, '--', titleMsg);
 
+        if (add_captions && state.isTranscribingVoice && (!captionState.cues || captionState.cues.length === 0)) {
+            updateProgressUI(0, 0, state.videoMeta ? state.videoMeta.frame_count : 0, 0, '~3s', 'Dola Edits: Waiting for AI voice captions to finish...');
+            let waitTries = 0;
+            while (state.isTranscribingVoice && waitTries < 15) {
+                await new Promise(r => setTimeout(r, 400));
+                waitTries++;
+            }
+        }
+
         try {
-            const resp = await fetch('/api/process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filename: state.currentFilename,
-                    original_name: state.originalName || (state.videoMeta && state.videoMeta.original_name) || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename,
-                    remove_watermark: remove_watermark,
-                    add_captions: add_captions,
-                    captions: add_captions ? captionState.cues : [],
-                    caption_style: captionState.style,
-                    caption_size: captionState.fontScale,
-                    caption_line_height: captionState.lineHeight,
-                    caption_pos_y: captionState.posY,
-                    quality: state.selectedQuality || '1080'
-                })
-            });
+            let resp = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    resp = await fetch('/api/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: state.currentFilename,
+                            original_name: state.originalName || (state.videoMeta && state.videoMeta.original_name) || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename,
+                            remove_watermark: remove_watermark,
+                            add_captions: add_captions,
+                            captions: add_captions ? captionState.cues : [],
+                            caption_style: captionState.style,
+                            caption_size: captionState.fontScale,
+                            caption_line_height: captionState.lineHeight,
+                            caption_pos_y: captionState.posY,
+                            quality: state.selectedQuality || '1080'
+                        })
+                    });
+                    if (resp && resp.status === 524 && attempt < 2) {
+                        console.warn('[Process] 524 received, auto-retrying in 1.5s...');
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    break;
+                } catch (netErr) {
+                    if (attempt < 2) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    throw netErr;
+                }
+            }
 
             let data;
             const resText = await resp.text().catch(() => '');
             try {
                 data = JSON.parse(resText);
             } catch (jsonErr) {
-                if (resp.status === 524) {
-                    throw new Error('Server timeout (524). Cloudflare limit reach hua. Kripya dobara try karein.');
+                if (resp && resp.status === 524) {
+                    throw new Error('Server timeout (524). Cloudflare tunnel temporarily delayed, please click process again.');
                 }
-                throw new Error(resText.slice(0, 120) || `Server error (${resp.status})`);
+                throw new Error(resText.slice(0, 120) || `Server error (${resp ? resp.status : 'network'})`);
             }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start processing');
@@ -1342,7 +1405,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnCaptionRemoveOnlyWm) btnCaptionRemoveOnlyWm.disabled = false;
             if (btnCaptionEditCombined) btnCaptionEditCombined.disabled = false;
             if (removerBtnText) removerBtnText.textContent = 'Remover';
-            alert('Processing error: ' + err.message);
+            const msg = err.message || '';
+            alert(msg.includes('524') ? 'Server timeout (524): Cloudflare connection took too long. Please click "Remover" again.' : 'Processing error: ' + msg);
         }
     }
 
@@ -1460,27 +1524,44 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cleanVideoScreen) cleanVideoScreen.classList.add('hidden');
 
         try {
-            const resp = await fetch('/api/process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filename: state.currentFilename,
-                    remove_watermark: remove_watermark,
-                    add_captions: add_captions,
-                    captions: [],
-                    quality: quality || state.selectedQuality || '1080'
-                })
-            });
+            let resp = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    resp = await fetch('/api/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: state.currentFilename,
+                            remove_watermark: remove_watermark,
+                            add_captions: add_captions,
+                            captions: [],
+                            quality: quality || state.selectedQuality || '1080'
+                        })
+                    });
+                    if (resp && resp.status === 524 && attempt < 2) {
+                        console.warn('[ProcessInPlace] 524 received, auto-retrying in 1.5s...');
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    break;
+                } catch (netErr) {
+                    if (attempt < 2) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    throw netErr;
+                }
+            }
 
             let data;
             const resText = await resp.text().catch(() => '');
             try {
                 data = JSON.parse(resText);
             } catch (jsonErr) {
-                if (resp.status === 524) {
-                    throw new Error('Server timeout (524). Cloudflare limit reach hua. Kripya dobara try karein.');
+                if (resp && resp.status === 524) {
+                    throw new Error('Server timeout (524). Cloudflare tunnel temporarily delayed, please click process again.');
                 }
-                throw new Error(resText.slice(0, 120) || `Server error (${resp.status})`);
+                throw new Error(resText.slice(0, 120) || `Server error (${resp ? resp.status : 'network'})`);
             }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start watermark removal');
@@ -1497,7 +1578,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removerInitialWrap) removerInitialWrap.classList.remove('is-processing');
             if (removerBtnText) removerBtnText.textContent = 'Remove Watermark';
             if (removerStatusSubtext) removerStatusSubtext.innerHTML = '<span>⚡ Click to Remove Dola Watermark</span>';
-            alert('Processing error: ' + err.message);
+            const msg = err.message || '';
+            alert(msg.includes('524') ? 'Server timeout (524): Cloudflare connection took too long. Please click "Remove Watermark" again.' : 'Processing error: ' + msg);
         }
     }
 
