@@ -349,19 +349,19 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
     scale_ratio = scale_val / 0.052
 
     if aspect_ratio < 0.85:
-        # Vertical Reels / Shorts (9:16): base font size on width so 3-4 word cues fit cleanly on 1 line
-        p = max(24, round(width * 0.058 * scale_ratio))
+        # Vertical Reels / Shorts (9:16): base font size strictly on 0.066 width ratio matching web preview
+        p = max(28, round(width * 0.066 * scale_ratio))
     else:
         # Horizontal / Square video: base font size on height
-        p = max(24, round(height * 0.052 * scale_ratio))
+        p = max(28, round(height * 0.058 * scale_ratio))
 
     border_w = max(2, round(p / 9))
     style_obj = CAPTION_STYLES.get(style_name, CAPTION_STYLES["classic"])
     dt_style = style_obj["dt"](border_w, p)
 
-    default_spacing = 1.25
+    default_spacing = 1.16
     lh = float(line_height) if line_height is not None and float(line_height) > 0 else default_spacing
-    bottom_margin_ratio = float(pos_y) if pos_y is not None and float(pos_y) > 0 else 0.10
+    bottom_margin_ratio = float(pos_y) if pos_y is not None and float(pos_y) > 0 else 0.07
 
     # max_chars allows full 3-4 word phrases (typically 18-28 chars) to stay on 1 line
     max_chars = max(26, int((width * 0.90) / max(1, p * 0.52)))
@@ -422,8 +422,7 @@ def build_caption_filters(captions, width, height, style_name="classic", size_ke
                 tf.write(sanitized_text)
 
             escaped_txt_path = txt_path.replace("\\", "/").replace(":", "\\:")
-            box_extra = max(6, round(p * 0.28))
-            y_pos = round(height - (height * bottom_margin_ratio) - ((total_lines - line_idx) * p * lh) - box_extra)
+            y_pos = round(height - (height * bottom_margin_ratio) - ((total_lines - line_idx) * p * lh))
             y_pos = max(10, min(height - p - 10, y_pos))
 
             font_clause = f"fontfile='{escaped_font}':" if os.path.exists(CAPTION_FONT_PATH) else ""
