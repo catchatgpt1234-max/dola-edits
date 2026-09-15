@@ -1028,6 +1028,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function ensureLivePreviewMode() {
         state.isCurrentlyBurnedVideo = false;
         state.burnedVideoUrl = null;
+        state.activeTaskId = null; // Clear old task so newly chosen style triggers fresh burn
         const targetUrl = state.cleanVideoUrl || state.rawVideoUrl;
         if (targetUrl && sourceVideo && !sourceVideo.src.includes(targetUrl)) {
             const curTime = sourceVideo.currentTime || 0;
@@ -1038,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (previewCaptionOverlay) previewCaptionOverlay.classList.remove('hidden');
     }
+
 
     // Real-Time Caption Text Input Handler
     if (captionTextInput) {
@@ -1337,12 +1339,18 @@ document.addEventListener('DOMContentLoaded', () => {
             : add_captions ? `Dola Edits: Burning Captions (${qName})...` : `Dola Edits: Removing Watermark (${qName})...`;
         updateProgressUI(0, 0, state.videoMeta ? state.videoMeta.frame_count : 0, 0, '--', titleMsg);
 
-        if (add_captions && state.isTranscribingVoice && (!captionState.cues || captionState.cues.length === 0)) {
-            updateProgressUI(0, 0, state.videoMeta ? state.videoMeta.frame_count : 0, 0, '~3s', 'Dola Edits: Waiting for AI voice captions to finish...');
-            let waitTries = 0;
-            while (state.isTranscribingVoice && waitTries < 15) {
-                await new Promise(r => setTimeout(r, 400));
-                waitTries++;
+        if (add_captions) {
+            const dur = (state.videoMeta && state.videoMeta.duration) || 10;
+            if (captionTextInput && captionTextInput.value.trim() && (!captionState.cues || captionState.cues.length === 0)) {
+                captionState.cues = parseSubtitlesText(captionTextInput.value.trim(), dur);
+            }
+            if (state.isTranscribingVoice && (!captionState.cues || captionState.cues.length === 0)) {
+                updateProgressUI(0, 0, state.videoMeta ? state.videoMeta.frame_count : 0, 0, '~3s', 'Dola Edits: Waiting for AI voice captions to finish...');
+                let waitTries = 0;
+                while (state.isTranscribingVoice && waitTries < 15) {
+                    await new Promise(r => setTimeout(r, 400));
+                    waitTries++;
+                }
             }
         }
 
@@ -1358,14 +1366,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             original_name: state.originalName || (state.videoMeta && state.videoMeta.original_name) || (videoFileName ? videoFileName.textContent.trim() : null) || state.currentFilename,
                             remove_watermark: remove_watermark,
                             add_captions: add_captions,
-                            captions: add_captions ? captionState.cues : [],
-                            caption_style: captionState.style,
-                            caption_size: captionState.fontScale,
-                            caption_line_height: captionState.lineHeight,
-                            caption_pos_y: captionState.posY,
+                            captions: add_captions ? (captionState.cues || []) : [],
+                            caption_style: captionState.style || 'classic',
+                            caption_size: captionState.fontScale || 0.052,
+                            caption_line_height: captionState.lineHeight || 1.16,
+                            caption_pos_y: (captionState.posY !== undefined && captionState.posY !== null) ? captionState.posY : 0.07,
                             quality: state.selectedQuality || '1080'
                         })
                     });
+
                     if (resp && resp.status === 524 && attempt < 2) {
                         console.warn('[Process] 524 received, auto-retrying in 1.5s...');
                         await new Promise(r => setTimeout(r, 1500));
@@ -1703,8 +1712,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 captionState.cues = parseSubtitlesText(captionTextInput.value.trim(), duration);
             }
 
-            // If video is already rendered with current captions, trigger immediate single download!
-            if (state.isCurrentlyBurnedVideo && state.activeTaskId) {
+            // If video is already rendered with EXACT current caption style and quality, trigger immediate download!
+            if (state.isCurrentlyBurnedVideo && state.activeTaskId && state.renderedStyle === captionState.style && state.renderedQuality === (state.selectedQuality || '1080')) {
                 const now = Date.now();
                 if (now - lastDownloadTimestamp < 1500) return;
                 lastDownloadTimestamp = now;
@@ -1722,6 +1731,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 1500);
                 return;
             }
+
 
             // Mark flag to automatically download as soon as processing completes!
             state.autoTriggerDownload = true;
@@ -1895,7 +1905,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (captionState.isCaptionAddActive) {
             state.isCurrentlyBurnedVideo = true;
             state.burnedVideoUrl = task.video_url;
+            state.renderedStyle = captionState.style;
+            state.renderedQuality = state.selectedQuality || '1080';
             // Load rendered video directly into the active Studio player!
+
             if (sourceVideo) {
                 sourceVideo.src = `${task.video_url}?t=${Date.now()}`;
                 sourceVideo.load();
@@ -3145,8 +3158,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const totalItems = pendingItems.length;
         let completedCount = 0;
-        const CONCURRENCY = 1;
+        const CONCURRENCY = Math.min(3, totalItems);
         let queueIdx = 0;
+
 
         async function bulkWorker() {
             while (queueIdx < totalItems) {
@@ -4015,9 +4029,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Sequential Worker Queue (processes 1 video at a time for 100% stability and zero memory crashes)
-        const CONCURRENCY = 1;
+        // Parallel Worker Queue (processes up to 3 videos concurrently for 300% faster bulk throughput)
+        const CONCURRENCY = Math.min(3, totalItems);
         let queueIdx = 0;
+
 
         async function worker() {
             while (queueIdx < totalItems) {

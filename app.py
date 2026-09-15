@@ -301,17 +301,18 @@ def start_processing():
             try:
                 actual_captions = captions
                 if add_captions and not actual_captions:
-                    if video_path in TRANSCRIPTION_CACHE and TRANSCRIPTION_CACHE[video_path].get("cues"):
-                        actual_captions = TRANSCRIPTION_CACHE[video_path]["cues"]
+                    if video_path in TRANSCRIPTION_CACHE:
+                        actual_captions = TRANSCRIPTION_CACHE[video_path].get("cues", [])
                     else:
                         TASKS[task_id]["percent"] = 5
                         try:
                             trans_result = transcribe_video_speech(video_path)
-                            if trans_result and trans_result.get("cues"):
-                                actual_captions = trans_result["cues"]
+                            if trans_result:
                                 TRANSCRIPTION_CACHE[video_path] = trans_result
+                                actual_captions = trans_result.get("cues", [])
                         except Exception as te:
                             print("Server-side transcription fallback error:", te)
+
 
                 actual_bbox = bbox
                 if not actual_bbox and remove_watermark:
@@ -419,8 +420,10 @@ def download_cleaned(task_id):
         output_path,
         as_attachment=True,
         download_name=download_name,
-        mimetype="video/mp4"
+        mimetype="video/mp4",
+        conditional=True
     )
+
 
 @app.route("/api/download-clean/<filename>", methods=["GET"])
 def download_clean_file(filename):
@@ -461,8 +464,10 @@ def download_clean_file(filename):
         clean_path,
         as_attachment=True,
         download_name=download_name,
-        mimetype="video/mp4"
+        mimetype="video/mp4",
+        conditional=True
     )
+
 
 @app.route("/api/bulk-download", methods=["GET", "POST"])
 def bulk_download():
@@ -537,8 +542,10 @@ def bulk_download():
             temp_zip_path,
             mimetype="application/zip",
             as_attachment=True,
-            download_name=f"dolaedits_bulk_{added_count}_videos.zip"
+            download_name=f"dolaedits_bulk_{added_count}_videos.zip",
+            conditional=True
         )
+
     except Exception as e:
         if os.path.exists(temp_zip_path):
             try:

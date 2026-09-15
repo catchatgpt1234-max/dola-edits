@@ -306,19 +306,19 @@ def transcribe_video_speech(video_path, model_size="tiny"):
             pass
 
         temp_dir = tempfile.gettempdir()
-        audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.mp3")
+        audio_path = os.path.join(temp_dir, f"whisper_audio_{uuid.uuid4().hex[:8]}.wav")
         
-        # Extract audio rapidly for Whisper (instantaneous 16kHz mono rip without slow filter passes)
+        # Extract audio instantaneously as raw 16kHz mono PCM WAV (zero mp3 encoding overhead)
         cmd = [
             FFMPEG_EXE, "-y", "-i", video_path,
             "-vn",
-            "-c:a", "libmp3lame",
-            "-b:a", "64k",
+            "-acodec", "pcm_s16le",
             "-ar", "16000",
             "-ac", "1",
             audio_path
         ]
         sub = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
         
         if not (sub.returncode == 0 and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000):
             # Fallback 1: Direct WAV extraction
