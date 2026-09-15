@@ -64,8 +64,8 @@ def get_ffmpeg_binary():
 
 FFMPEG_EXE = get_ffmpeg_binary()
 
-# Safe CPU thread limit to prevent system starvation and Cloudflare 524 gateway timeouts
-SAFE_FFMPEG_THREADS = str(max(4, min(10, (os.cpu_count() or 4) - 1)))
+# Safe CPU thread limit: allows override via env variable, defaults to 2-4 threads for memory stability
+SAFE_FFMPEG_THREADS = os.environ.get("FFMPEG_THREADS", str(max(2, min(4, (os.cpu_count() or 2) - 1))))
 
 _NVENC_CHECKED = False
 _NVENC_AVAILABLE = False
