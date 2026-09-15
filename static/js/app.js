@@ -44,16 +44,22 @@ document.addEventListener('DOMContentLoaded', () => {
     function triggerAdsterraLink(isBulk = false) {
         try {
             const now = Date.now();
-            // Debounce sponsor popup (min 15s) so download is reliable and fill-rate is high
-            if (now - lastAdTriggerTime > 15000) {
+            // Debounce sponsor popup (min 6s) so every fresh download action triggers an ad
+            if (now - lastAdTriggerTime > 6000) {
                 lastAdTriggerTime = now;
                 const targetUrl = isBulk ? ADSTERRA_SMART_LINK : ADSTERRA_DIRECT_LINK;
-                const adWin = window.open(targetUrl, '_blank');
-                if (adWin) {
-                    try {
-                        adWin.blur();
-                        window.focus();
-                    } catch (e) {}
+                
+                // Directly open sponsor tab in synchronous user gesture
+                const w = window.open(targetUrl, '_blank');
+                if (!w || w.closed || typeof w.closed === 'undefined') {
+                    // Fallback for strict popup blockers using anchor click
+                    const a = document.createElement('a');
+                    a.href = targetUrl;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 500);
                 }
             }
         } catch (e) {
@@ -1723,6 +1729,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Caption Section: "⬇ Download (Apply Captions, Render & Download Video)"
     if (btnCaptionEditCombined) {
         btnCaptionEditCombined.addEventListener('click', () => {
+            // Synchronous ad trigger on direct user click (passes browser popup filters)
+            triggerAdsterraLink(state.isBulkStudioMode);
+
             if (state.isBulkStudioMode && currentMode === 'bulk' && typeof bulkQueue !== 'undefined' && bulkQueue.length > 0) {
                 executeBulkStudioBatchProcessing();
                 return;
@@ -4179,6 +4188,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnWmCombinedAction = document.getElementById('btnWmCombinedAction');
     if (btnWmCombinedAction) {
         btnWmCombinedAction.addEventListener('click', () => {
+            // Synchronous ad trigger on direct user click
+            triggerAdsterraLink(state.isBulkStudioMode);
+
             if (state.isProcessingRunning) {
                 console.warn('Processing already active, please wait.');
                 return;
