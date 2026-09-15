@@ -299,19 +299,13 @@ def start_processing():
                 TASKS[task_id]["eta"] = eta
 
             try:
-                actual_captions = captions
+                actual_captions = captions or []
                 if add_captions and not actual_captions:
                     if video_path in TRANSCRIPTION_CACHE:
                         actual_captions = TRANSCRIPTION_CACHE[video_path].get("cues", [])
                     else:
-                        TASKS[task_id]["percent"] = 5
-                        try:
-                            trans_result = transcribe_video_speech(video_path)
-                            if trans_result:
-                                TRANSCRIPTION_CACHE[video_path] = trans_result
-                                actual_captions = trans_result.get("cues", [])
-                        except Exception as te:
-                            print("Server-side transcription fallback error:", te)
+                        print(f"Notice: No captions ready in cache for {video_path}, proceeding with zero-delay render.")
+
 
 
                 actual_bbox = bbox

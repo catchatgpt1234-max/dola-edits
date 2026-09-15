@@ -149,18 +149,19 @@ def _extract_words_from_segments(segments_list):
 def get_groq_api_key():
     """Retrieves Groq API key from environment, local file, or embedded default."""
     env_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if env_key and not env_key.startswith("gsk_TI0ZXjOY4kbPzEsdBXwjWGdyb3FY"):
+    if env_key:
         return env_key
     key_file = os.path.join(os.path.dirname(__file__), "..", "groq_key.txt")
     if os.path.exists(key_file):
         try:
             with open(key_file, "r", encoding="utf-8") as f:
                 k = f.read().strip()
-                if len(k) > 20 and not k.startswith("gsk_TI0ZXjOY4kbPzEsdBXwjWGdyb3FY"):
+                if len(k) > 20:
                     return k
         except Exception:
             pass
     return ""
+
 
 GROQ_API_KEY = get_groq_api_key()
 
