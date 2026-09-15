@@ -1,6 +1,6 @@
 # 🚀 Dola Edits — AI Tool Directories Submission Kit (2026)
 
-जब आप अपनी वेबसाइट **https://dolaedits.com** को इन AI डायरेक्टरीज़ पर सबमिट करेंगे, तो आपको तुरंत हज़ारों ऑर्गेनिक विज़िटर्स और पावरफुल SEO बैकलिंक्स मिलेंगे।
+जब आप अपनी वेबसाइट **https://dolaedits.online** को इन AI डायरेक्टरीज़ पर सबमिट करेंगे, तो आपको तुरंत हज़ारों ऑर्गेनिक विज़िटर्स और पावरफुल SEO बैकलिंक्स मिलेंगे।
 
 नीचे टॉप 5 **100% मुफ़्त (Free Submission)** AI डायरेक्टरीज़ की डायरेक्ट लिंक्स और फ़ॉर्म में भरने के लिए रेडीमेड डेटा दिया गया है (बस कॉपी-पेस्ट करें):
 
@@ -9,7 +9,7 @@
 ## 📋 कॉपी-पेस्ट करने के लिए रेडीमेड डेटा (Copy-Paste Info)
 
 * **Tool Name**: `Dola Edits`
-* **Website URL**: `https://dolaedits.com`
+* **Website URL**: `https://dolaedits.online`
 * **Short Tagline (एक लाइन का विवरण)**:
   > Free AI Video Watermark Remover & Viral Subtitles Studio for Reels and Shorts.
 * **Pricing**: `Free` (या `Free Plan Available`)
@@ -43,7 +43,7 @@
 ### 3. SaaSHub
 * **सबमिशन लिंक**: [https://www.saashub.com/submit](https://www.saashub.com/submit)
 * **लागत**: 100% Free
-* **फायदा**: आपकी साइट `dolaedits.com` को हाई-अथॉरिटी **Dofollow Backlink** मिलता है, जिससे गूगल सर्च में रैंकिंग बहुत तेज़ी से बढ़ती है।
+* **फायदा**: आपकी साइट `dolaedits.online` को हाई-अथॉरिटी **Dofollow Backlink** मिलता है, जिससे गूगल सर्च में रैंकिंग बहुत तेज़ी से बढ़ती है।
 
 ---
 
