@@ -3194,7 +3194,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const totalItems = pendingItems.length;
         let completedCount = 0;
-        const CONCURRENCY = Math.min(3, totalItems);
+        // Sequential 1-by-1 processing: 1 video completes fully, then 2nd, then 3rd
+        const CONCURRENCY = 1;
         let queueIdx = 0;
 
 
@@ -4068,8 +4069,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Parallel Worker Queue (processes up to 3 videos concurrently for 300% faster bulk throughput)
-        const CONCURRENCY = Math.min(3, totalItems);
+        // Sequential 1-by-1 processing: Dedicates full server power to 1 video at a time
+        const CONCURRENCY = 1;
         let queueIdx = 0;
 
 
