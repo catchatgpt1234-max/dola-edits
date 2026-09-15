@@ -1294,11 +1294,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             let data;
+            const resText = await resp.text().catch(() => '');
             try {
-                data = await resp.json();
+                data = JSON.parse(resText);
             } catch (jsonErr) {
-                const text = await resp.text().catch(() => '');
-                throw new Error(text.slice(0, 120) || `Server error (${resp.status})`);
+                if (resp.status === 524) {
+                    throw new Error('Server timeout (524). Cloudflare limit reach hua. Kripya dobara try karein.');
+                }
+                throw new Error(resText.slice(0, 120) || `Server error (${resp.status})`);
             }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start processing');
@@ -1445,11 +1448,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             let data;
+            const resText = await resp.text().catch(() => '');
             try {
-                data = await resp.json();
+                data = JSON.parse(resText);
             } catch (jsonErr) {
-                const text = await resp.text().catch(() => '');
-                throw new Error(text.slice(0, 120) || `Server error (${resp.status})`);
+                if (resp.status === 524) {
+                    throw new Error('Server timeout (524). Cloudflare limit reach hua. Kripya dobara try karein.');
+                }
+                throw new Error(resText.slice(0, 120) || `Server error (${resp.status})`);
             }
             if (!resp.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start watermark removal');

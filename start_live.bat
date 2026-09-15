@@ -1,10 +1,11 @@
-﻿@echo off
+@echo off
 title Dola Edits AI - Live Cloudflare Server (dolaedits.online)
 echo ========================================================
 echo   Starting Dola Edits Server and Cloudflare Tunnel
 echo   Your domain: https://dolaedits.online
 echo ========================================================
 
+set NO_BROWSER=1
 start "Dola Edits Backend" python run.py
 timeout /t 3 /nobreak >nul
 

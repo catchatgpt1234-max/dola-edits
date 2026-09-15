@@ -64,6 +64,9 @@ def get_ffmpeg_binary():
 
 FFMPEG_EXE = get_ffmpeg_binary()
 
+# Safe CPU thread limit to prevent system starvation and Cloudflare 524 gateway timeouts
+SAFE_FFMPEG_THREADS = str(max(2, min(4, (os.cpu_count() or 4) - 1)))
+
 # Font path for captions (SoniAutoEditor / ZBot font)
 CAPTION_FONT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "fonts", "caption.ttf"))
 
@@ -753,20 +756,20 @@ def process_video(
         # Turbo hardware-accelerated encoder parameters (6x faster processing)
         if q_str in ("4k", "2160", "2160p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", SAFE_FFMPEG_THREADS,
                 "-c:v", "libx264",
-                "-preset", "veryfast",
+                "-preset", "ultrafast",
                 "-tune", "fastdecode",
-                "-b:v", "18M",
-                "-maxrate", "24M",
-                "-bufsize", "32M",
-                "-crf", "16",
+                "-b:v", "14M",
+                "-maxrate", "20M",
+                "-bufsize", "24M",
+                "-crf", "18",
                 "-pix_fmt", "yuv420p"
             ]
             a_codec_args = ["-c:a", "aac", "-b:a", "256k"]
         elif q_str in ("1080", "1080p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", SAFE_FFMPEG_THREADS,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-tune", "fastdecode",
@@ -776,7 +779,7 @@ def process_video(
             a_codec_args = ["-c:a", "aac", "-b:a", "192k"]
         elif q_str in ("720", "720p"):
             v_codec_args = [
-                "-threads", "0",
+                "-threads", SAFE_FFMPEG_THREADS,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-tune", "fastdecode",
@@ -786,7 +789,7 @@ def process_video(
             a_codec_args = ["-c:a", "aac", "-b:a", "160k"]
         else:
             v_codec_args = [
-                "-threads", "0",
+                "-threads", SAFE_FFMPEG_THREADS,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-tune", "fastdecode",
@@ -797,8 +800,8 @@ def process_video(
 
         cmd = [
             FFMPEG_EXE, "-y",
-            "-threads", "0",
-            "-filter_threads", "0",
+            "-threads", SAFE_FFMPEG_THREADS,
+            "-filter_threads", SAFE_FFMPEG_THREADS,
             "-i", video_path,
             "-vf", vf_filter,
             *v_codec_args
@@ -891,8 +894,8 @@ def process_video(
                     FFMPEG_EXE, "-y",
                     "-i", video_path,
                     "-vf", retry_filter,
-                    "-threads", "0",
-                    "-filter_threads", "0",
+                    "-threads", SAFE_FFMPEG_THREADS,
+                    "-filter_threads", SAFE_FFMPEG_THREADS,
                     "-c:v", "libx264",
                     "-preset", "ultrafast",
                     "-crf", "20",
@@ -1065,7 +1068,7 @@ def enhance_video_quality(input_path, output_path, target_quality="1080"):
         FFMPEG_EXE, "-y",
         "-i", input_path,
         "-vf", enh_filter,
-        "-threads", "0",
+        "-threads", SAFE_FFMPEG_THREADS,
         "-c:v", "libx264",
         "-preset", preset,
         "-tune", "fastdecode",

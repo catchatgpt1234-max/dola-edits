@@ -45,6 +45,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 TASKS = {}
 TASK_CLEANUP_SECONDS = 1800  # Auto-cleanup completed tasks after 30 minutes
+TRANSCRIPTION_CACHE = {}
 
 @app.errorhandler(Exception)
 def handle_all_exceptions(e):
@@ -187,7 +188,12 @@ def api_transcribe_audio():
         return jsonify({"error": "Video not found"}), 404
 
     try:
+        if video_path in TRANSCRIPTION_CACHE:
+            return jsonify({"success": True, **TRANSCRIPTION_CACHE[video_path]})
+
         result = transcribe_video_speech(video_path)
+        if result and result.get("cues"):
+            TRANSCRIPTION_CACHE[video_path] = result
         return jsonify({"success": True, **result})
     except Exception as e:
         return jsonify({"error": f"Speech transcription failed: {str(e)}"}), 500
@@ -262,13 +268,17 @@ def start_processing():
             try:
                 actual_captions = captions
                 if add_captions and not actual_captions:
-                    TASKS[task_id]["percent"] = 5
-                    try:
-                        trans_result = transcribe_video_speech(video_path)
-                        if trans_result and trans_result.get("cues"):
-                            actual_captions = trans_result["cues"]
-                    except Exception as te:
-                        print("Server-side transcription fallback error:", te)
+                    if video_path in TRANSCRIPTION_CACHE and TRANSCRIPTION_CACHE[video_path].get("cues"):
+                        actual_captions = TRANSCRIPTION_CACHE[video_path]["cues"]
+                    else:
+                        TASKS[task_id]["percent"] = 5
+                        try:
+                            trans_result = transcribe_video_speech(video_path)
+                            if trans_result and trans_result.get("cues"):
+                                actual_captions = trans_result["cues"]
+                                TRANSCRIPTION_CACHE[video_path] = trans_result
+                        except Exception as te:
+                            print("Server-side transcription fallback error:", te)
 
                 actual_bbox = bbox
                 if not actual_bbox and remove_watermark:
